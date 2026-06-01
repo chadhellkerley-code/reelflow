@@ -1153,85 +1153,6 @@ async function probeHasAudio(ffmpeg, inputName, outputName) {
   return String(text).includes('audio');
 }
 
-function parseSilenceIntervals(logText) {
-  const intervals = [];
-  let currentStart = null;
-
-  String(logText).split('\n').forEach(line => {
-    const startMatch = line.match(/silence_start:\s*([0-9.]+)/);
-    if (startMatch) {
-      currentStart = Number.parseFloat(startMatch[1]);
-      return;
-    }
-
-    const endMatch = line.match(/silence_end:\s*([0-9.]+)\s*\|\s*silence_duration:\s*([0-9.]+)/);
-    if (!endMatch || currentStart === null) return;
-
-    const end = Number.parseFloat(endMatch[1]);
-    const duration = Number.parseFloat(endMatch[2]);
-    if (Number.isFinite(currentStart) && Number.isFinite(end) && Number.isFinite(duration)) {
-      intervals.push({ start: currentStart, end, duration });
-    }
-    currentStart = null;
-  });
-
-  return intervals;
-}
-
-async function detectSilences(ffmpeg, inputName, hasAudio, duration = 0) {
-  if (!hasAudio) return [];
-
-  const attempts = [
-    { noise: '-34dB', duration: 0.25 },
-    { noise: '-30dB', duration: 0.22 },
-    { noise: '-26dB', duration: 0.18 },
-  ];
-
-  for (const attempt of attempts) {
-    const logText = await runFFmpegWithLogs(ffmpeg, () => execFFmpegChecked(ffmpeg, [
-      '-i', inputName,
-      '-af', `silencedetect=noise=${attempt.noise}:d=${attempt.duration}`,
-      '-f', 'null',
-      '-',
-    ], 'No se pudo analizar el audio del video.'));
-    const intervals = parseSilenceIntervals(logText);
-    const lastOpen = logText.match(/silence_start:\s*([0-9.]+)(?![\s\S]*silence_end:)/);
-    if (lastOpen && duration > 0) {
-      const start = Number.parseFloat(lastOpen[1]);
-      if (Number.isFinite(start) && duration - start >= attempt.duration) {
-        intervals.push({ start, end: duration, duration: duration - start });
-      }
-    }
-    if (intervals.length > 0) return intervals;
-  }
-
-  return [];
-}
-
-function buildKeepSegments(silences, duration) {
-  if (!duration) return [];
-
-  const relevantSilences = silences
-    .filter(item => item.duration >= 0.22 && item.end > item.start)
-    .sort((a, b) => a.start - b.start);
-
-  if (relevantSilences.length === 0) return [{ start: 0, end: duration }];
-
-  const segments = [];
-  let cursor = 0;
-
-  relevantSilences.forEach(silence => {
-    const end = Math.max(cursor, Math.min(silence.start, duration));
-    if (end - cursor >= 0.25) segments.push({ start: cursor, end });
-    cursor = Math.max(cursor, Math.min(silence.end, duration));
-  });
-
-  if (duration - cursor >= 0.25) segments.push({ start: cursor, end: duration });
-
-  if (segments.length === 0 || segments.length > 60) return [{ start: 0, end: duration }];
-  return segments;
-}
-
 function buildRhythmSegments(duration, referenceMeta = {}, index = 0) {
   if (!duration || duration < 3.5) return [{ start: 0, end: duration }];
 
@@ -1662,10 +1583,8 @@ function safeFilePart(value) {
 function renderPendingResult(reference, template, index, profile, editStats) {
   const item = document.createElement('div');
   const id = `render_${Date.now()}_${index}`;
-  const cutText = editStats?.mode === 'silence'
-    ? `${Math.max(0, editStats.silenceCount || 0)} silencio(s)`
-    : editStats?.mode === 'reference'
-      ? `${Math.max(0, editStats.referenceCutCount || 0)} corte(s) del ejemplar${editStats.silenceCount ? ` + ${editStats.silenceCount} silencio(s)` : ''}`
+  const cutText = editStats?.mode === 'reference'
+      ? `${Math.max(0, editStats.referenceCutCount || 0)} corte(s) del ejemplar`
     : editStats?.mode === 'rhythm'
       ? `${Math.max(0, editStats.rhythmCutCount || 0)} corte(s) de ritmo`
       : 'estilo visual';
@@ -1722,13 +1641,11 @@ async function generateFormats() {
     statusEl.textContent = 'Cargando video en memoria local...';
     await ffmpeg.writeFile(inputName, await runtime.fetchFile(baseVideo));
 
-    statusEl.textContent = 'Analizando audio para recortar silencios...';
+    statusEl.textContent = 'Analizando duración y audio del video base...';
     const browserBaseDuration = await getBrowserVideoDuration(baseVideo).catch(() => 0);
     const probedBaseDuration = await probeDuration(ffmpeg, inputName, 'base-duration.txt').catch(() => 0);
     const baseDuration = Math.max(probedBaseDuration, browserBaseDuration);
     const hasAudio = await probeHasAudio(ffmpeg, inputName, 'base-audio.txt').catch(() => false);
-    const silences = await detectSilences(ffmpeg, inputName, hasAudio, baseDuration).catch(() => []);
-    const silenceSegments = buildKeepSegments(silences, baseDuration);
 
     state.generatedVideos.forEach(video => URL.revokeObjectURL(video.url));
     state.generatedVideos = [];
@@ -1757,27 +1674,22 @@ async function generateFormats() {
       if (overlayFilters.length > 0) {
         await ensureFFmpegFont(runtime);
       }
-      const spokenSegments = silenceSegments.length > 1 ? silenceSegments : [{ start: 0, end: baseDuration }];
-      const referenceSegments = buildReferenceDrivenSegments(baseDuration, referenceMeta, i, spokenSegments);
+      const referenceSegments = buildReferenceDrivenSegments(baseDuration, referenceMeta, i, [{ start: 0, end: baseDuration }]);
       const rhythmSegments = buildRhythmSegments(baseDuration, referenceMeta, i);
-      const useSilenceCuts = silenceSegments.length > 1;
       const useReferenceCuts = referenceSegments.length > 1;
-      const segments = useReferenceCuts ? referenceSegments : useSilenceCuts ? silenceSegments : rhythmSegments;
+      const segments = useReferenceCuts ? referenceSegments : rhythmSegments;
       const editStats = {
         hasAudio,
-        silenceCount: useSilenceCuts ? Math.max(0, silenceSegments.length - 1) : 0,
         referenceCutCount: useReferenceCuts ? Math.max(0, referenceSegments.length - 1) : 0,
-        rhythmCutCount: !useReferenceCuts && !useSilenceCuts && segments.length > 1 ? segments.length - 1 : 0,
+        rhythmCutCount: !useReferenceCuts && segments.length > 1 ? segments.length - 1 : 0,
         segmentCount: segments.length,
-        mode: useReferenceCuts ? 'reference' : useSilenceCuts ? 'silence' : segments.length > 1 ? 'rhythm' : 'style',
+        mode: useReferenceCuts ? 'reference' : segments.length > 1 ? 'rhythm' : 'style',
       };
       const resultId = renderPendingResult(reference, template, i, profile, editStats);
       const outputName = `${safeFilePart(baseVideo.name)}-${safeFilePart(reference.name)}-editado.mp4`;
       state.ffmpeg.activeStatusId = `${resultId}_status`;
-      const cutLabel = editStats.mode === 'silence'
-        ? `recortando ${editStats.silenceCount} silencio(s)`
-        : editStats.mode === 'reference'
-          ? `aplicando ${editStats.referenceCutCount} corte(s) del ejemplar`
+      const cutLabel = editStats.mode === 'reference'
+        ? `aplicando ${editStats.referenceCutCount} corte(s) del ejemplar`
         : editStats.mode === 'rhythm'
           ? `aplicando ${editStats.rhythmCutCount} corte(s) de ritmo`
           : 'aplicando estilo visual fuerte';
@@ -1810,7 +1722,6 @@ async function generateFormats() {
         filename: baseVideo.name,
         referenceFilename: reference.name,
         editProfile: profile.name,
-        silenceCuts: editStats.silenceCount,
         status: 'ready',
         date: new Date().toISOString(),
       });
