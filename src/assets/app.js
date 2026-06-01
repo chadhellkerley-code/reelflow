@@ -28,11 +28,19 @@ const state = {
   },
 };
 
+state.settings = {
+  backendUrl: 'http://localhost:4000',
+  geminiApiKey: '',
+  geminiModel: 'gemini-2.5-flash',
+  ...state.settings,
+};
+
 const PUBLIC_ORIGIN = 'https://reelflow-topaz.vercel.app';
 const INSTAGRAM_APP_ID = '1428803625601557';
 const INSTAGRAM_SCOPES = 'instagram_business_basic,instagram_business_content_publish';
 const TIKTOK_CLIENT_KEY = 'sbaw89mga3yconmz26';
 const TIKTOK_SCOPES = 'user.info.basic,video.publish';
+const GEMINI_INLINE_VIDEO_MAX_BYTES = 18 * 1024 * 1024;
 const FFMPEG_CORE_VERSION = '0.12.10';
 const FFMPEG_FONT_URL = 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bopsz,wght%5D.ttf';
 const FFMPEG_FONT_FILE = 'Inter.ttf';
@@ -261,8 +269,11 @@ function saveHistory() {
   localStorage.setItem('rf_history', JSON.stringify(state.history));
 }
 function saveSettings() {
-  state.settings.backendUrl    = document.getElementById('backend-url').value;
+  state.settings.backendUrl = document.getElementById('backend-url')?.value?.trim() || 'http://localhost:4000';
+  state.settings.geminiApiKey = document.getElementById('gemini-api-key')?.value?.trim() || '';
+  state.settings.geminiModel = document.getElementById('gemini-model')?.value?.trim() || 'gemini-2.5-flash';
   localStorage.setItem('rf_settings', JSON.stringify(state.settings));
+  updateEditorEngineStatus();
   toast('Configuración guardada', 'success');
 }
 
@@ -1045,6 +1056,25 @@ function ffmpegComplexCommand(input, output, filterGraph) {
 function initEditor() {
   renderReferenceVideos();
   updateReferenceCount();
+  updateEditorEngineStatus();
+}
+
+function updateEditorEngineStatus() {
+  const hasGemini = Boolean(state.settings.geminiApiKey);
+  const engine = document.getElementById('editor-engine');
+  const note = document.getElementById('gemini-editor-note');
+
+  if (engine) {
+    engine.value = hasGemini
+      ? `Gemini Omni + FFmpeg.wasm (${state.settings.geminiModel || 'gemini-2.5-flash'})`
+      : 'FFmpeg.wasm local';
+  }
+
+  if (note) {
+    note.textContent = hasGemini
+      ? 'Gemini Omni va a analizar el video base y cada ejemplar antes de renderizar localmente.'
+      : 'Gemini Omni se activa desde Configuración. Si no hay API key, ReelFlow usa el análisis local.';
+  }
 }
 
 function getReferenceTemplate(ref, index = 0) {
@@ -1206,6 +1236,13 @@ async function detectSceneTimes(ffmpeg, inputName) {
 }
 
 function getReferenceBeatDurations(referenceMeta = {}) {
+  if (Array.isArray(referenceMeta.geminiBeatDurations) && referenceMeta.geminiBeatDurations.length > 0) {
+    return referenceMeta.geminiBeatDurations
+      .map(value => Math.max(0.45, Math.min(2.8, Number(value) || 0)))
+      .filter(value => value >= 0.45)
+      .slice(0, 18);
+  }
+
   const duration = Number(referenceMeta.duration || 0);
   const sceneTimes = (referenceMeta.sceneTimes || [])
     .filter(time => Number.isFinite(time) && time > 0 && (!duration || time < duration - 0.1))
@@ -1260,6 +1297,203 @@ function buildReferenceDrivenSegments(duration, referenceMeta = {}, index = 0, s
   }
 
   return segments.length > 1 ? segments : [{ start: 0, end: duration }];
+}
+
+function getGeminiApiKey() {
+  return String(state.settings.geminiApiKey || '').trim();
+}
+
+function getGeminiModel() {
+  return String(state.settings.geminiModel || 'gemini-2.5-flash').trim();
+}
+
+function isGeminiEnabled() {
+  return Boolean(getGeminiApiKey());
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = String(reader.result || '');
+      resolve(value.includes(',') ? value.split(',').pop() : value);
+    };
+    reader.onerror = () => reject(new Error('No se pudo leer el video para Gemini.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
+}
+
+function extractJsonObject(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function normalizeGeminiEditPlan(plan = {}) {
+  const allowedKeys = new Set(LOCAL_VIDEO_TEMPLATES.map(template => template.key));
+  const styleKey = allowedKeys.has(plan.styleKey) ? plan.styleKey : '';
+  const beats = Array.isArray(plan.cutCadenceSeconds)
+    ? plan.cutCadenceSeconds
+        .map(value => clampNumber(value, 0.45, 2.8, 0))
+        .filter(Boolean)
+        .slice(0, 18)
+    : [];
+
+  return {
+    styleKey,
+    profileName: String(plan.editProfileName || plan.profileName || '').trim().slice(0, 80),
+    hook: String(plan.hook || '').trim().slice(0, 70),
+    sub: String(plan.sub || plan.subtitle || '').trim().slice(0, 80),
+    pacing: ['fast', 'medium', 'slow'].includes(plan.pacing) ? plan.pacing : '',
+    beats,
+    recommendedDuration: clampNumber(plan.recommendedDurationSeconds, 4, 90, 0),
+    notes: Array.isArray(plan.notes) ? plan.notes.map(note => String(note).slice(0, 90)).slice(0, 3) : [],
+  };
+}
+
+function getGeminiPrompt(baseVideo, reference, referenceMeta = {}, textConfig = {}) {
+  const templates = LOCAL_VIDEO_TEMPLATES.map(template => `${template.key}: ${template.name} (${template.desc})`).join('\n');
+  return `
+Actuá como un editor de Reels/TikTok. Analizá el video base y el video ejemplar para crear un plan de edición aplicable con FFmpeg.
+
+Objetivo: que el video base se parezca al ejemplar en ritmo, tipo de recorte, energía visual, ubicación de textos y duración, sin inventar escenas nuevas.
+
+Plantillas disponibles:
+${templates}
+
+Datos del video base:
+- Nombre: ${baseVideo.name}
+- Tamaño MB: ${(baseVideo.size / 1024 / 1024).toFixed(1)}
+
+Datos del ejemplar:
+- Nombre: ${reference.name}
+- Duración estimada: ${Number(referenceMeta.duration || 0).toFixed(2)}s
+- Cortes detectados localmente: ${(referenceMeta.sceneTimes || []).slice(0, 12).join(', ') || 'sin cortes claros'}
+- Brillo: ${Number(referenceMeta.visual?.brightness || 0).toFixed(2)}
+- Saturación: ${Number(referenceMeta.visual?.saturation || 0).toFixed(2)}
+- Contraste: ${Number(referenceMeta.visual?.contrast || 0).toFixed(2)}
+- Zona de texto probable: ${referenceMeta.visual?.textBand?.key || 'lower'}
+
+Textos pedidos por el usuario:
+- Hook: ${textConfig.hook || 'vacío'}
+- Subtexto: ${textConfig.sub || 'vacío'}
+- Usuario: ${textConfig.username || 'vacío'}
+
+Devolvé SOLO JSON válido con esta forma:
+{
+  "styleKey": "una key exacta de las plantillas",
+  "editProfileName": "nombre corto del look",
+  "pacing": "fast|medium|slow",
+  "cutCadenceSeconds": [0.8, 1.1, 0.7],
+  "recommendedDurationSeconds": 18,
+  "hook": "si el usuario no escribió hook, sugerí uno corto",
+  "sub": "si el usuario no escribió subtexto, sugerí uno corto",
+  "notes": ["máximo 3 notas cortas"]
+}`.trim();
+}
+
+async function buildGeminiRequestParts(baseVideo, reference, referenceMeta, textConfig) {
+  const parts = [{ text: getGeminiPrompt(baseVideo, reference, referenceMeta, textConfig) }];
+  const totalVideoBytes = (baseVideo?.size || 0) + (reference?.file?.size || 0);
+
+  if (totalVideoBytes > GEMINI_INLINE_VIDEO_MAX_BYTES) {
+    parts.push({
+      text: `No envío los videos completos porque pesan ${(totalVideoBytes / 1024 / 1024).toFixed(1)} MB. Usá los metadatos y el análisis local para devolver el mejor plan posible.`,
+    });
+    return parts;
+  }
+
+  if (baseVideo) {
+    parts.push({ text: 'Video base del usuario:' });
+    parts.push({
+      inline_data: {
+        mime_type: baseVideo.type || 'video/mp4',
+        data: await readFileAsBase64(baseVideo),
+      },
+    });
+  }
+
+  if (reference?.file) {
+    parts.push({ text: 'Video ejemplar de referencia:' });
+    parts.push({
+      inline_data: {
+        mime_type: reference.file.type || 'video/mp4',
+        data: await readFileAsBase64(reference.file),
+      },
+    });
+  }
+
+  return parts;
+}
+
+async function getGeminiEditPlan(baseVideo, reference, referenceMeta, textConfig) {
+  if (!isGeminiEnabled()) return null;
+
+  const model = getGeminiModel();
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const parts = await buildGeminiRequestParts(baseVideo, reference, referenceMeta, textConfig);
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': getGeminiApiKey(),
+    },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts }],
+      generationConfig: {
+        temperature: 0.35,
+        responseMimeType: 'application/json',
+      },
+    }),
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message = payload?.error?.message || 'Gemini no pudo analizar la referencia.';
+    throw new Error(message);
+  }
+
+  const text = payload?.candidates?.[0]?.content?.parts
+    ?.map(part => part.text || '')
+    .join('\n');
+  const json = extractJsonObject(text);
+  if (!json) throw new Error('Gemini devolvió una respuesta sin JSON de edición.');
+  return normalizeGeminiEditPlan(json);
+}
+
+function applyGeminiPlanToReferenceMeta(referenceMeta = {}, geminiPlan = null) {
+  if (!geminiPlan) return referenceMeta;
+  return {
+    ...referenceMeta,
+    geminiBeatDurations: geminiPlan.beats,
+    geminiPlan,
+  };
+}
+
+function mergeTextConfigWithGemini(textConfig = {}, geminiPlan = null) {
+  if (!geminiPlan) return textConfig;
+  return {
+    hook: textConfig.hook || geminiPlan.hook || '',
+    sub: textConfig.sub || geminiPlan.sub || '',
+    username: textConfig.username || '',
+  };
 }
 
 function getEditorTextConfig() {
@@ -1580,7 +1814,7 @@ function safeFilePart(value) {
   return String(value || 'video').replace(/\.[^.]+$/, '').replace(/[^a-z0-9._-]/gi, '-').slice(0, 80);
 }
 
-function renderPendingResult(reference, template, index, profile, editStats) {
+function renderPendingResult(reference, template, index, profile, editStats, geminiPlan = null) {
   const item = document.createElement('div');
   const id = `render_${Date.now()}_${index}`;
   const cutText = editStats?.mode === 'reference'
@@ -1596,7 +1830,7 @@ function renderPendingResult(reference, template, index, profile, editStats) {
       <div class="result-name">Ref ${index + 1}: ${escapeHtml(reference.name)}</div>
       <div class="result-meta" id="${id}_status">En cola...</div>
       <div class="result-meta">Edición: ${escapeHtml(profile.name)} · ${escapeHtml(cutText)}</div>
-      <div class="result-meta">Ejemplar analizado: ritmo, cortes, look y zonas de texto/overlay</div>
+      <div class="result-meta">${geminiPlan ? `Gemini Omni: ${escapeHtml(geminiPlan.profileName || geminiPlan.pacing || 'plan aplicado')}` : 'Ejemplar analizado: ritmo, cortes, look y zonas de texto/overlay'}</div>
       <div class="result-actions" id="${id}_actions"></div>
     </div>
   `;
@@ -1650,14 +1884,14 @@ async function generateFormats() {
     state.generatedVideos.forEach(video => URL.revokeObjectURL(video.url));
     state.generatedVideos = [];
     results.innerHTML = '';
-    const textConfig = getEditorTextConfig();
+    const baseTextConfig = getEditorTextConfig();
 
     for (let i = 0; i < selectedReferences.length; i++) {
       const reference = selectedReferences[i];
       const referenceIndex = state.referenceVideos.findIndex(ref => ref.id === reference.id);
-      const template = getReferenceTemplate(reference, referenceIndex >= 0 ? referenceIndex : i);
       const referenceInputName = `reference-${Date.now()}-${i}.${reference.name.split('.').pop() || 'mp4'}`;
       let referenceMeta = {};
+      let geminiPlan = null;
 
       if (reference.file) {
         await ffmpeg.writeFile(referenceInputName, await runtime.fetchFile(reference.file));
@@ -1669,7 +1903,21 @@ async function generateFormats() {
         await ffmpeg.deleteFile(referenceInputName).catch(() => {});
       }
 
+      if (isGeminiEnabled()) {
+        statusEl.textContent = `Gemini Omni analizando referencia ${i + 1} de ${selectedReferences.length}...`;
+        try {
+          geminiPlan = await getGeminiEditPlan(baseVideo, reference, referenceMeta, baseTextConfig);
+          referenceMeta = applyGeminiPlanToReferenceMeta(referenceMeta, geminiPlan);
+        } catch (error) {
+          toast(`Gemini falló en ref ${i + 1}: ${getErrorMessage(error, 'seguimos con análisis local')}`, 'error');
+        }
+      }
+
+      const fallbackTemplate = getReferenceTemplate(reference, referenceIndex >= 0 ? referenceIndex : i);
+      const template = geminiPlan?.styleKey ? getTemplateByKey(geminiPlan.styleKey) || fallbackTemplate : fallbackTemplate;
       const profile = getReferenceEditProfile(template, referenceMeta, i);
+      if (geminiPlan?.profileName) profile.name = geminiPlan.profileName;
+      const textConfig = mergeTextConfigWithGemini(baseTextConfig, geminiPlan);
       const overlayFilters = buildReferenceOverlayFilters(referenceMeta, textConfig);
       if (overlayFilters.length > 0) {
         await ensureFFmpegFont(runtime);
@@ -1685,7 +1933,7 @@ async function generateFormats() {
         segmentCount: segments.length,
         mode: useReferenceCuts ? 'reference' : segments.length > 1 ? 'rhythm' : 'style',
       };
-      const resultId = renderPendingResult(reference, template, i, profile, editStats);
+      const resultId = renderPendingResult(reference, template, i, profile, editStats, geminiPlan);
       const outputName = `${safeFilePart(baseVideo.name)}-${safeFilePart(reference.name)}-editado.mp4`;
       state.ffmpeg.activeStatusId = `${resultId}_status`;
       const cutLabel = editStats.mode === 'reference'
@@ -1722,6 +1970,7 @@ async function generateFormats() {
         filename: baseVideo.name,
         referenceFilename: reference.name,
         editProfile: profile.name,
+        ai: geminiPlan ? 'Gemini Omni' : 'Local',
         status: 'ready',
         date: new Date().toISOString(),
       });
@@ -1801,7 +2050,12 @@ document.getElementById('history-filter').addEventListener('change', renderHisto
 //  SETTINGS
 // ═══════════════════════════════════════════════════════════
 function renderSettings() {
-  if (state.settings.backendUrl)    document.getElementById('backend-url').value = state.settings.backendUrl;
+  if (state.settings.backendUrl) document.getElementById('backend-url').value = state.settings.backendUrl;
+  const geminiKeyInput = document.getElementById('gemini-api-key');
+  const geminiModelInput = document.getElementById('gemini-model');
+  if (geminiKeyInput) geminiKeyInput.value = state.settings.geminiApiKey || '';
+  if (geminiModelInput) geminiModelInput.value = state.settings.geminiModel || 'gemini-2.5-flash';
+  updateEditorEngineStatus();
 
   // Tokens list
   const list = document.getElementById('tokens-list');

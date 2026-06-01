@@ -206,6 +206,17 @@
 .form-input::placeholder { color: var(--text-muted); }
 .form-input[readonly] { color: var(--text-2); cursor: default; }
 
+.form-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.form-hint a {
+  color: var(--info);
+  text-decoration: none;
+}
+.form-hint a:hover { text-decoration: underline; }
+
 .form-textarea { resize: vertical; min-height: 100px; line-height: 1.6; }
 
 .form-row {
@@ -651,6 +662,17 @@
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   margin-bottom: 24px;
+}
+
+.ai-editor-note {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 /* ── Generated results ───────────────────────── */
