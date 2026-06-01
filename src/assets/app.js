@@ -1072,6 +1072,96 @@ function buildRhythmSegments(duration, referenceMeta = {}, index = 0) {
   return segments.length > 1 ? segments : [{ start: 0, end: duration }];
 }
 
+function parseSceneTimes(logText) {
+  const times = [];
+  const regex = /pts_time:\s*([0-9.]+)/g;
+  let match;
+
+  while ((match = regex.exec(String(logText))) !== null) {
+    const time = Number.parseFloat(match[1]);
+    if (Number.isFinite(time) && time > 0.15) times.push(time);
+  }
+
+  return Array.from(new Set(times.map(time => Number(time.toFixed(2)))))
+    .sort((a, b) => a - b)
+    .slice(0, 30);
+}
+
+async function detectSceneTimes(ffmpeg, inputName) {
+  const attempts = [0.24, 0.18, 0.12];
+
+  for (const threshold of attempts) {
+    const logText = await runFFmpegWithLogs(ffmpeg, () => execFFmpegChecked(ffmpeg, [
+      '-i', inputName,
+      '-vf', `select='gt(scene,${threshold})',showinfo`,
+      '-an',
+      '-f', 'null',
+      '-',
+    ], 'No se pudo analizar los cortes visuales de la referencia.'));
+    const times = parseSceneTimes(logText);
+    if (times.length > 0) return times;
+  }
+
+  return [];
+}
+
+function getReferenceBeatDurations(referenceMeta = {}) {
+  const duration = Number(referenceMeta.duration || 0);
+  const sceneTimes = (referenceMeta.sceneTimes || [])
+    .filter(time => Number.isFinite(time) && time > 0 && (!duration || time < duration - 0.1))
+    .sort((a, b) => a - b);
+
+  const points = duration > 0
+    ? [0, ...sceneTimes, duration]
+    : [0, ...sceneTimes];
+
+  const beats = [];
+  for (let i = 1; i < points.length; i++) {
+    const beat = points[i] - points[i - 1];
+    if (beat >= 0.28) beats.push(Math.max(0.45, Math.min(2.6, beat)));
+  }
+
+  if (beats.length > 0) return beats.slice(0, 18);
+
+  if (duration > 0 && duration < 10) return [0.9, 0.75, 1.05, 0.65];
+  if (duration > 0 && duration < 25) return [1.25, 0.9, 1.4, 0.8];
+  return [1.6, 1.15, 1.35, 0.95];
+}
+
+function buildReferenceDrivenSegments(duration, referenceMeta = {}, index = 0, sourceSegments = []) {
+  if (!duration || duration < 1.2) return [{ start: 0, end: duration }];
+
+  const usableSources = (sourceSegments.length ? sourceSegments : [{ start: 0, end: duration }])
+    .filter(segment => segment.end - segment.start >= 0.35);
+  if (usableSources.length === 0) return [{ start: 0, end: duration }];
+
+  const beats = getReferenceBeatDurations(referenceMeta);
+  const gap = 0.14 + (index % 3) * 0.05;
+  const segments = [];
+  let sourceIndex = 0;
+  let cursor = usableSources[0].start;
+  let beatIndex = 0;
+
+  while (sourceIndex < usableSources.length && segments.length < 70) {
+    const source = usableSources[sourceIndex];
+    if (cursor < source.start) cursor = source.start;
+    if (cursor >= source.end - 0.25) {
+      sourceIndex++;
+      if (sourceIndex < usableSources.length) cursor = usableSources[sourceIndex].start;
+      continue;
+    }
+
+    const beat = beats[beatIndex % beats.length];
+    const end = Math.min(source.end, cursor + beat);
+    if (end - cursor >= 0.32) segments.push({ start: cursor, end });
+
+    cursor = end + gap;
+    beatIndex++;
+  }
+
+  return segments.length > 1 ? segments : [{ start: 0, end: duration }];
+}
+
 function formatSeconds(value) {
   return Number(value || 0).toFixed(3);
 }
@@ -1320,6 +1410,8 @@ function renderPendingResult(reference, template, index, profile, editStats) {
   const id = `render_${Date.now()}_${index}`;
   const cutText = editStats?.mode === 'silence'
     ? `${Math.max(0, editStats.silenceCount || 0)} silencio(s)`
+    : editStats?.mode === 'reference'
+      ? `${Math.max(0, editStats.referenceCutCount || 0)} corte(s) del ejemplar${editStats.silenceCount ? ` + ${editStats.silenceCount} silencio(s)` : ''}`
     : editStats?.mode === 'rhythm'
       ? `${Math.max(0, editStats.rhythmCutCount || 0)} corte(s) de ritmo`
       : 'estilo visual';
@@ -1331,7 +1423,7 @@ function renderPendingResult(reference, template, index, profile, editStats) {
       <div class="result-name">Ref ${index + 1}: ${escapeHtml(reference.name)}</div>
       <div class="result-meta" id="${id}_status">En cola...</div>
       <div class="result-meta">Edición: ${escapeHtml(profile.name)} · ${escapeHtml(cutText)}</div>
-      <div class="result-meta">Referencia base: ${escapeHtml(template.name)}</div>
+      <div class="result-meta">Ejemplar analizado: ritmo y cortes del video seleccionado</div>
       <div class="result-actions" id="${id}_actions"></div>
     </div>
   `;
@@ -1379,7 +1471,7 @@ async function generateFormats() {
     statusEl.textContent = 'Analizando audio para recortar silencios...';
     const browserBaseDuration = await getBrowserVideoDuration(baseVideo).catch(() => 0);
     const probedBaseDuration = await probeDuration(ffmpeg, inputName, 'base-duration.txt').catch(() => 0);
-    const baseDuration = probedBaseDuration || browserBaseDuration;
+    const baseDuration = Math.max(probedBaseDuration, browserBaseDuration);
     const hasAudio = await probeHasAudio(ffmpeg, inputName, 'base-audio.txt').catch(() => false);
     const silences = await detectSilences(ffmpeg, inputName, hasAudio, baseDuration).catch(() => []);
     const silenceSegments = buildKeepSegments(silences, baseDuration);
@@ -1399,26 +1491,33 @@ async function generateFormats() {
         await ffmpeg.writeFile(referenceInputName, await runtime.fetchFile(reference.file));
         const browserReferenceDuration = await getBrowserVideoDuration(reference.file).catch(() => 0);
         const probedReferenceDuration = await probeDuration(ffmpeg, referenceInputName, `ref-duration-${i}.txt`).catch(() => 0);
-        referenceMeta.duration = probedReferenceDuration || browserReferenceDuration;
+        referenceMeta.duration = Math.max(probedReferenceDuration, browserReferenceDuration);
+        referenceMeta.sceneTimes = await detectSceneTimes(ffmpeg, referenceInputName).catch(() => []);
         await ffmpeg.deleteFile(referenceInputName).catch(() => {});
       }
 
       const profile = getReferenceEditProfile(template, referenceMeta, i);
+      const spokenSegments = silenceSegments.length > 1 ? silenceSegments : [{ start: 0, end: baseDuration }];
+      const referenceSegments = buildReferenceDrivenSegments(baseDuration, referenceMeta, i, spokenSegments);
       const rhythmSegments = buildRhythmSegments(baseDuration, referenceMeta, i);
       const useSilenceCuts = silenceSegments.length > 1;
-      const segments = useSilenceCuts ? silenceSegments : rhythmSegments;
+      const useReferenceCuts = referenceSegments.length > 1;
+      const segments = useReferenceCuts ? referenceSegments : useSilenceCuts ? silenceSegments : rhythmSegments;
       const editStats = {
         hasAudio,
-        silenceCount: useSilenceCuts ? segments.length - 1 : 0,
-        rhythmCutCount: !useSilenceCuts && segments.length > 1 ? segments.length - 1 : 0,
+        silenceCount: useSilenceCuts ? Math.max(0, silenceSegments.length - 1) : 0,
+        referenceCutCount: useReferenceCuts ? Math.max(0, referenceSegments.length - 1) : 0,
+        rhythmCutCount: !useReferenceCuts && !useSilenceCuts && segments.length > 1 ? segments.length - 1 : 0,
         segmentCount: segments.length,
-        mode: useSilenceCuts ? 'silence' : segments.length > 1 ? 'rhythm' : 'style',
+        mode: useReferenceCuts ? 'reference' : useSilenceCuts ? 'silence' : segments.length > 1 ? 'rhythm' : 'style',
       };
       const resultId = renderPendingResult(reference, template, i, profile, editStats);
       const outputName = `${safeFilePart(baseVideo.name)}-${safeFilePart(reference.name)}-editado.mp4`;
       state.ffmpeg.activeStatusId = `${resultId}_status`;
       const cutLabel = editStats.mode === 'silence'
         ? `recortando ${editStats.silenceCount} silencio(s)`
+        : editStats.mode === 'reference'
+          ? `aplicando ${editStats.referenceCutCount} corte(s) del ejemplar`
         : editStats.mode === 'rhythm'
           ? `aplicando ${editStats.rhythmCutCount} corte(s) de ritmo`
           : 'aplicando estilo visual fuerte';
