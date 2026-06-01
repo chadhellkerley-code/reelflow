@@ -44,6 +44,10 @@
           <span class="nav-icon">◧</span>
           <span class="nav-label">Editor</span>
         </a>
+        <a href="#" class="nav-item" data-page="ai-video">
+          <span class="nav-icon">▣</span>
+          <span class="nav-label">Crear IA</span>
+        </a>
         <a href="#" class="nav-item" data-page="history">
           <span class="nav-icon">◫</span>
           <span class="nav-label">Historial</span>
@@ -175,6 +179,10 @@
               <button class="quick-btn" onclick="navigateTo('editor')">
                 <span class="quick-icon">◧</span>
                 <span class="quick-label">Editar con formatos</span>
+              </button>
+              <button class="quick-btn" onclick="navigateTo('ai-video')">
+                <span class="quick-icon">▣</span>
+                <span class="quick-label">Crear video IA</span>
               </button>
               <button class="quick-btn" onclick="navigateTo('history')">
                 <span class="quick-icon">◫</span>
@@ -542,6 +550,201 @@
           </div>
         </section>
 
+        <!-- ═══════════════════════════════════════ CREAR IA ═══ -->
+        <section class="page" id="page-ai-video">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Crear video IA</h1>
+              <p class="page-subtitle">Diseñá un video desde una foto, un guion y tu voz personalizada.</p>
+            </div>
+            <div class="page-header-actions">
+              <button class="btn btn-outline btn-sm" onclick="navigateTo('settings')">Configurar keys</button>
+            </div>
+          </div>
+
+          <div class="ai-video-layout">
+            <div class="ai-video-main">
+              <div class="editor-step">
+                <div class="step-header">
+                  <div class="step-number">01</div>
+                  <div>
+                    <h3>Foto base</h3>
+                    <p>Subí la imagen que va a guiar el personaje, producto o escena principal.</p>
+                  </div>
+                </div>
+                <div class="upload-zone upload-zone-editor" id="ai-photo-upload-zone" onclick="document.getElementById('ai-photo-input').click()">
+                  <div class="upload-icon">▧</div>
+                  <div class="upload-text">
+                    <strong>Agregar foto de referencia</strong>
+                    <span>PNG, JPG o WEBP</span>
+                    <span class="upload-hint">Ideal: buena luz, rostro/producto claro y sin blur</span>
+                  </div>
+                  <input type="file" id="ai-photo-input" accept="image/*" hidden onchange="handleAiPhotoUpload(event)" />
+                </div>
+                <div class="ai-asset-preview" id="ai-photo-preview"></div>
+              </div>
+
+              <div class="editor-step">
+                <div class="step-header">
+                  <div class="step-number">02</div>
+                  <div>
+                    <h3>Brief del video</h3>
+                    <p>Completá los detalles. ReelFlow arma un prompt profesional para video + voz + lip-sync.</p>
+                  </div>
+                </div>
+                <div class="config-grid">
+                  <div class="form-group">
+                    <label>Idea principal</label>
+                    <textarea class="form-input form-textarea" id="ai-video-idea" placeholder="Ej: video UGC para vender mi servicio de automatización de reels"></textarea>
+                  </div>
+                  <div class="form-group">
+                    <label>Qué debe decir</label>
+                    <textarea class="form-input form-textarea" id="ai-video-dialogue" placeholder="Escribí el guion o dejá indicaciones de lo que querés decir"></textarea>
+                  </div>
+                  <div class="form-group">
+                    <label>Quién aparece</label>
+                    <input type="text" class="form-input" id="ai-video-people" placeholder="Ej: yo, mirando a cámara, estilo creador UGC" />
+                  </div>
+                  <div class="form-group">
+                    <label>Lugar</label>
+                    <input type="text" class="form-input" id="ai-video-location" placeholder="Ej: oficina moderna, fondo limpio, luz natural" />
+                  </div>
+                  <div class="form-group">
+                    <label>Vestimenta</label>
+                    <input type="text" class="form-input" id="ai-video-clothing" placeholder="Ej: remera negra, look casual profesional" />
+                  </div>
+                  <div class="form-group">
+                    <label>Acción</label>
+                    <input type="text" class="form-input" id="ai-video-action" placeholder="Ej: hablando a cámara, mostrando el celular, señalando texto" />
+                  </div>
+                  <div class="form-group">
+                    <label>Tema</label>
+                    <input type="text" class="form-input" id="ai-video-topic" placeholder="Ej: cómo crear reels más rápido con IA" />
+                  </div>
+                  <div class="form-group">
+                    <label>Llamado a la acción</label>
+                    <input type="text" class="form-input" id="ai-video-cta" placeholder="Ej: escribime IA por DM para probarlo" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="editor-step">
+                <div class="step-header">
+                  <div class="step-number">03</div>
+                  <div>
+                    <h3>Voz personalizada</h3>
+                    <p>Usá una voz configurada o adjuntá una muestra para preparar el flujo de clonación autorizada.</p>
+                  </div>
+                </div>
+                <div class="ai-consent-box">
+                  <strong>Consentimiento requerido</strong>
+                  <span>Usá solo tu voz o una voz con permiso explícito. Guardá una grabación diciendo que autorizás crear una voz sintética con esa muestra.</span>
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Modo de voz</label>
+                    <select class="form-input" id="ai-voice-mode">
+                      <option value="configured">Usar mi Voice ID configurado</option>
+                      <option value="sample">Adjuntar muestra para crear voz</option>
+                      <option value="neutral">Usar voz IA predeterminada</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>Tono</label>
+                    <select class="form-input" id="ai-voice-tone">
+                      <option value="natural vendedor">Natural vendedor</option>
+                      <option value="educativo">Educativo</option>
+                      <option value="emocional">Emocional</option>
+                      <option value="urgente">Urgente</option>
+                      <option value="ugc casual">UGC casual</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="upload-zone upload-zone-editor" id="ai-voice-upload-zone" onclick="document.getElementById('ai-voice-sample-input').click()">
+                  <div class="upload-icon">◍</div>
+                  <div class="upload-text">
+                    <strong>Agregar ejemplo de voz o video</strong>
+                    <span>Audio o video corto con voz limpia</span>
+                    <span class="upload-hint">Recomendado: 15 a 30 segundos</span>
+                  </div>
+                  <input type="file" id="ai-voice-sample-input" accept="audio/*,video/*" hidden onchange="handleAiVoiceSampleUpload(event)" />
+                </div>
+                <div class="ai-asset-preview" id="ai-voice-preview"></div>
+              </div>
+
+              <div class="editor-step">
+                <div class="step-header">
+                  <div class="step-number">04</div>
+                  <div>
+                    <h3>Prompt final</h3>
+                    <p>Generá el brief que se enviará al pipeline de video, voz y lip-sync.</p>
+                  </div>
+                  <div class="step-actions">
+                    <button class="btn btn-ghost btn-sm" onclick="copyAiVideoPrompt()">Copiar</button>
+                  </div>
+                </div>
+                <textarea class="form-input form-textarea ai-prompt-output" id="ai-video-prompt-output" readonly placeholder="El prompt aparecerá acá."></textarea>
+                <div class="ai-editor-note" id="ai-video-status">Configurá OpenAI y lip-sync en Configuración para dejar listo el render avanzado.</div>
+                <div class="form-row">
+                  <button class="btn btn-primary btn-lg btn-full" onclick="buildAiVideoPrompt()">
+                    <span>▣</span> Generar prompt avanzado
+                  </button>
+                  <button class="btn btn-outline btn-lg btn-full" onclick="saveAiVideoDraft()">
+                    Guardar borrador
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <aside class="ai-video-side">
+              <div class="card">
+                <div class="card-title">Salida</div>
+                <div class="form-group">
+                  <label>Formato</label>
+                  <select class="form-input" id="ai-video-ratio">
+                    <option value="vertical 9:16">Vertical 9:16</option>
+                    <option value="horizontal 16:9">Horizontal 16:9</option>
+                    <option value="cuadrado 1:1">Cuadrado 1:1</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Duración</label>
+                  <select class="form-input" id="ai-video-duration">
+                    <option value="8 segundos">8 segundos</option>
+                    <option value="4 segundos">4 segundos</option>
+                    <option value="12 segundos">12 segundos</option>
+                    <option value="15 segundos">15 segundos</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Calidad visual</label>
+                  <select class="form-input" id="ai-video-quality">
+                    <option value="look 4K, nitido, cinematico, piel natural">Look 4K cinematico</option>
+                    <option value="UGC realista, camara de celular premium">UGC realista</option>
+                    <option value="publicitario premium, producto claro">Publicitario premium</option>
+                    <option value="documental, natural, luz suave">Documental natural</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Cámara / movimiento</label>
+                  <input type="text" class="form-input" id="ai-video-camera" value="plano medio, mirada a camara, movimiento suave, foco estable" />
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-title">Pipeline</div>
+                <div class="ai-pipeline">
+                  <div class="ai-pipeline-item"><span>1</span><strong>Foto</strong><small>Referencia visual</small></div>
+                  <div class="ai-pipeline-item"><span>2</span><strong>Guion</strong><small>OpenAI</small></div>
+                  <div class="ai-pipeline-item"><span>3</span><strong>Voz</strong><small>TTS / Voice ID</small></div>
+                  <div class="ai-pipeline-item"><span>4</span><strong>Lip-sync</strong><small>Sync Labs / HeyGen</small></div>
+                  <div class="ai-pipeline-item"><span>5</span><strong>Render</strong><small>MP4 final</small></div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
         <!-- ═══════════════════════════════════════ HISTORIAL ═══ -->
         <section class="page" id="page-history">
           <div class="page-header">
@@ -624,6 +827,55 @@
                 <div class="form-hint">Gemini analiza el video y FFmpeg renderiza la edición en tu navegador.</div>
               </div>
               <button class="btn btn-primary btn-sm" onclick="saveSettings()">Guardar Gemini</button>
+            </div>
+
+            <div class="card">
+              <div class="card-title">OpenAI Video / Voz</div>
+              <div class="form-group">
+                <label>OpenAI API Key</label>
+                <input type="password" class="form-input" id="openai-api-key" placeholder="Pegá tu API key de OpenAI" autocomplete="off" />
+                <div class="form-hint">Para producción conviene mover esta key a variables de entorno del backend.</div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Modelo de video</label>
+                  <input type="text" class="form-input" id="openai-video-model" value="sora-2" placeholder="sora-2" />
+                </div>
+                <div class="form-group">
+                  <label>Modelo de voz</label>
+                  <input type="text" class="form-input" id="openai-tts-model" value="gpt-4o-mini-tts" placeholder="gpt-4o-mini-tts" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Voice ID personalizado</label>
+                <input type="text" class="form-input" id="openai-voice-id" placeholder="Ej: voice_..." />
+                <div class="form-hint">Usalo si ya creaste una voz personalizada autorizada.</div>
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="saveSettings()">Guardar OpenAI</button>
+            </div>
+
+            <div class="card">
+              <div class="card-title">Lip-sync avanzado</div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Proveedor</label>
+                  <select class="form-input" id="lipsync-provider">
+                    <option value="sync-labs">Sync Labs</option>
+                    <option value="heygen">HeyGen</option>
+                    <option value="d-id">D-ID</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>API Key</label>
+                  <input type="password" class="form-input" id="lipsync-api-key" placeholder="Key del proveedor de lip-sync" autocomplete="off" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label>Endpoint custom</label>
+                <input type="text" class="form-input" id="lipsync-endpoint" placeholder="Opcional si usás un backend propio" />
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="saveSettings()">Guardar lip-sync</button>
             </div>
 
             <div class="card">

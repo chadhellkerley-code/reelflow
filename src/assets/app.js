@@ -11,6 +11,9 @@ const state = {
   history:  JSON.parse(localStorage.getItem('rf_history')  || '[]'),
   settings: JSON.parse(localStorage.getItem('rf_settings') || '{"backendUrl":"http://localhost:4000"}'),
   selectedVideo: null,
+  aiVideoPhoto: null,
+  aiVideoPhotoUrl: '',
+  aiVoiceSample: null,
   editorVideos: [],
   referenceVideos: [],
   selectedReferences: new Set(),
@@ -33,6 +36,13 @@ state.settings = {
   backendUrl: 'http://localhost:4000',
   geminiApiKey: '',
   geminiModel: 'gemini-1.5-pro',
+  openaiApiKey: '',
+  openaiVideoModel: 'sora-2',
+  openaiTtsModel: 'gpt-4o-mini-tts',
+  openaiVoiceId: '',
+  lipSyncProvider: 'sync-labs',
+  lipSyncApiKey: '',
+  lipSyncEndpoint: '',
   ...state.settings,
 };
 
@@ -289,6 +299,7 @@ const pages = {
   accounts:  'Cuentas',
   publisher: 'Publicar',
   editor:    'Editor de Videos',
+  'ai-video': 'Crear video IA',
   history:   'Historial',
   settings:  'Configuración',
 };
@@ -315,6 +326,7 @@ function navigateTo(page) {
   if (page === 'dashboard') renderDashboard();
   if (page === 'publisher') renderPublisherAccounts();
   if (page === 'editor')    initEditor();
+  if (page === 'ai-video')  renderAiVideoStatus();
   if (page === 'history')   renderHistory();
   if (page === 'settings')  renderSettings();
 }
@@ -373,9 +385,17 @@ function saveSettings() {
   state.settings.backendUrl = document.getElementById('backend-url')?.value?.trim() || 'http://localhost:4000';
   state.settings.geminiApiKey = document.getElementById('gemini-api-key')?.value?.trim() || '';
   state.settings.geminiModel = document.getElementById('gemini-model')?.value?.trim() || 'gemini-1.5-pro';
+  state.settings.openaiApiKey = document.getElementById('openai-api-key')?.value?.trim() || '';
+  state.settings.openaiVideoModel = document.getElementById('openai-video-model')?.value?.trim() || 'sora-2';
+  state.settings.openaiTtsModel = document.getElementById('openai-tts-model')?.value?.trim() || 'gpt-4o-mini-tts';
+  state.settings.openaiVoiceId = document.getElementById('openai-voice-id')?.value?.trim() || '';
+  state.settings.lipSyncProvider = document.getElementById('lipsync-provider')?.value || 'sync-labs';
+  state.settings.lipSyncApiKey = document.getElementById('lipsync-api-key')?.value?.trim() || '';
+  state.settings.lipSyncEndpoint = document.getElementById('lipsync-endpoint')?.value?.trim() || '';
   localStorage.setItem('rf_settings', JSON.stringify(state.settings));
   syncGeminiGlobals();
   updateEditorEngineStatus();
+  renderAiVideoStatus();
   toast('Configuración guardada', 'success');
 }
 
@@ -425,8 +445,8 @@ function renderDashboard() {
   } else {
     activity.innerHTML = state.history.slice(-5).reverse().map(h => `
       <div class="activity-item">
-        <div class="activity-icon">${h.platform === 'ig' ? '▶' : '◆'}</div>
-        <div class="activity-text">${h.type === 'format' ? 'Ediciones generadas' : 'Reel publicado'} · ${h.account || ''}</div>
+        <div class="activity-icon">${h.platform === 'ig' ? '▶' : h.platform === 'ai' ? '▣' : '◆'}</div>
+        <div class="activity-text">${h.type === 'format' ? 'Ediciones generadas' : h.type === 'ai-video' ? 'Borrador de video IA' : 'Reel publicado'} · ${h.account || h.filename || ''}</div>
         <div class="activity-time">${formatDate(h.date)}</div>
       </div>
     `).join('');
@@ -448,6 +468,13 @@ function formatDate(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
   return d.toLocaleDateString('es-AR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+}
+
+function formatBytes(bytes) {
+  const size = Number(bytes || 0);
+  if (!size) return '0 KB';
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2580,6 +2607,219 @@ async function generateFormats() {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  AI VIDEO CREATOR
+// ═══════════════════════════════════════════════════════════
+function handleAiPhotoUpload(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!file.type.startsWith('image/')) {
+    toast('Subí una imagen válida', 'error');
+    return;
+  }
+
+  if (state.aiVideoPhotoUrl) URL.revokeObjectURL(state.aiVideoPhotoUrl);
+  state.aiVideoPhoto = file;
+  state.aiVideoPhotoUrl = URL.createObjectURL(file);
+  renderAiPhotoPreview();
+  renderAiVideoStatus();
+}
+
+function renderAiPhotoPreview() {
+  const container = document.getElementById('ai-photo-preview');
+  if (!container || !state.aiVideoPhoto) return;
+
+  container.innerHTML = `
+    <div class="ai-asset-card">
+      <img src="${state.aiVideoPhotoUrl}" alt="Foto de referencia" />
+      <div class="ai-asset-info">
+        <strong>${escapeHtml(state.aiVideoPhoto.name)}</strong>
+        <span>${formatBytes(state.aiVideoPhoto.size)}</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="clearAiPhoto()">Quitar</button>
+    </div>
+  `;
+}
+
+function clearAiPhoto() {
+  if (state.aiVideoPhotoUrl) URL.revokeObjectURL(state.aiVideoPhotoUrl);
+  state.aiVideoPhoto = null;
+  state.aiVideoPhotoUrl = '';
+  const input = document.getElementById('ai-photo-input');
+  const preview = document.getElementById('ai-photo-preview');
+  if (input) input.value = '';
+  if (preview) preview.innerHTML = '';
+  renderAiVideoStatus();
+}
+
+function handleAiVoiceSampleUpload(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  if (!file.type.startsWith('audio/') && !file.type.startsWith('video/')) {
+    toast('Subí un audio o video válido', 'error');
+    return;
+  }
+
+  state.aiVoiceSample = file;
+  const preview = document.getElementById('ai-voice-preview');
+  if (preview) {
+    preview.innerHTML = `
+      <div class="ai-asset-card compact">
+        <div class="ai-asset-icon">◍</div>
+        <div class="ai-asset-info">
+          <strong>${escapeHtml(file.name)}</strong>
+          <span>${formatBytes(file.size)} · ${escapeHtml(file.type || 'archivo de voz')}</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="clearAiVoiceSample()">Quitar</button>
+      </div>
+    `;
+  }
+  renderAiVideoStatus();
+}
+
+function clearAiVoiceSample() {
+  state.aiVoiceSample = null;
+  const input = document.getElementById('ai-voice-sample-input');
+  const preview = document.getElementById('ai-voice-preview');
+  if (input) input.value = '';
+  if (preview) preview.innerHTML = '';
+  renderAiVideoStatus();
+}
+
+function getAiInputValue(id) {
+  return document.getElementById(id)?.value?.trim() || '';
+}
+
+function getAiVideoBrief() {
+  return {
+    idea: getAiInputValue('ai-video-idea'),
+    dialogue: getAiInputValue('ai-video-dialogue'),
+    people: getAiInputValue('ai-video-people'),
+    location: getAiInputValue('ai-video-location'),
+    clothing: getAiInputValue('ai-video-clothing'),
+    action: getAiInputValue('ai-video-action'),
+    topic: getAiInputValue('ai-video-topic'),
+    cta: getAiInputValue('ai-video-cta'),
+    ratio: getAiInputValue('ai-video-ratio') || 'vertical 9:16',
+    duration: getAiInputValue('ai-video-duration') || '8 segundos',
+    quality: getAiInputValue('ai-video-quality') || 'look 4K, nitido, cinematico, piel natural',
+    camera: getAiInputValue('ai-video-camera'),
+    voiceMode: getAiInputValue('ai-voice-mode') || 'configured',
+    voiceTone: getAiInputValue('ai-voice-tone') || 'natural vendedor',
+  };
+}
+
+function buildAiVideoPrompt() {
+  const brief = getAiVideoBrief();
+  if (!brief.idea && !brief.dialogue) {
+    toast('Completá la idea principal o el texto que debe decir', 'error');
+    return '';
+  }
+
+  const voiceInstruction = {
+    configured: state.settings.openaiVoiceId
+      ? `Usar Voice ID personalizada "${state.settings.openaiVoiceId}" con tono ${brief.voiceTone}.`
+      : `Usar una voz personalizada autorizada con tono ${brief.voiceTone}. Falta configurar Voice ID.`,
+    sample: state.aiVoiceSample
+      ? `Crear o usar voz personalizada a partir de la muestra adjunta "${state.aiVoiceSample.name}", solo si existe consentimiento del propietario. Tono ${brief.voiceTone}.`
+      : `Crear o usar voz personalizada con muestra autorizada. Falta adjuntar audio/video de referencia. Tono ${brief.voiceTone}.`,
+    neutral: `Usar una voz IA predeterminada, clara y natural, con tono ${brief.voiceTone}.`,
+  }[brief.voiceMode] || `Usar voz natural con tono ${brief.voiceTone}.`;
+
+  const prompt = [
+    `Crear un video ${brief.ratio} de ${brief.duration} usando la imagen de referencia como base visual.`,
+    '',
+    'Objetivo del video:',
+    brief.idea || 'No especificado.',
+    '',
+    'Personas / personaje:',
+    brief.people || 'Usar el sujeto principal de la foto de referencia.',
+    '',
+    'Escena y estilo:',
+    `Lugar: ${brief.location || 'fondo limpio y realista.'}`,
+    `Vestimenta: ${brief.clothing || 'coherente con la foto y el contexto.'}`,
+    `Accion: ${brief.action || 'hablar a camara con gestos naturales.'}`,
+    `Camara: ${brief.camera || 'plano medio, mirada a camara, movimiento suave.'}`,
+    `Calidad: ${brief.quality}. Evitar deformaciones de rostro, manos, dientes o texto ilegible.`,
+    '',
+    'Guion / dialogo:',
+    brief.dialogue || `Hablar sobre ${brief.topic || 'el tema principal'} de forma clara, breve y convincente.`,
+    '',
+    'Tema central:',
+    brief.topic || 'No especificado.',
+    '',
+    'Llamado a la accion:',
+    brief.cta || 'Cerrar con una invitacion clara a comentar, escribir por DM o seguir la cuenta.',
+    '',
+    'Voz:',
+    voiceInstruction,
+    '',
+    'Lip-sync:',
+    `Sincronizar labios con el audio final usando ${state.settings.lipSyncProvider || 'proveedor de lip-sync'} y conservar expresiones naturales.`,
+    '',
+    'Postproduccion:',
+    'Agregar subtitulos legibles, ritmo dinamico, audio limpio, color natural, nitidez alta y export MP4 listo para reels.',
+  ].join('\n');
+
+  const output = document.getElementById('ai-video-prompt-output');
+  if (output) output.value = prompt;
+  renderAiVideoStatus();
+  toast('Prompt avanzado generado', 'success');
+  return prompt;
+}
+
+function copyAiVideoPrompt() {
+  const output = document.getElementById('ai-video-prompt-output');
+  if (!output?.value) {
+    toast('Primero generá el prompt', 'error');
+    return;
+  }
+  navigator.clipboard.writeText(output.value).then(() => toast('Prompt copiado', 'success'));
+}
+
+function saveAiVideoDraft() {
+  const prompt = document.getElementById('ai-video-prompt-output')?.value || buildAiVideoPrompt();
+  if (!prompt) return;
+
+  state.history.push({
+    id: 'ai_' + Date.now(),
+    type: 'ai-video',
+    platform: 'ai',
+    status: 'draft',
+    filename: state.aiVideoPhoto?.name || 'Video IA',
+    prompt,
+    date: new Date().toISOString(),
+  });
+  saveHistory();
+  renderDashboard();
+  toast('Borrador de video IA guardado', 'success');
+}
+
+function renderAiVideoStatus() {
+  const status = document.getElementById('ai-video-status');
+  if (!status) return;
+
+  const voiceMode = getAiInputValue('ai-voice-mode') || 'configured';
+  const checks = [
+    state.aiVideoPhoto ? 'foto lista' : 'falta foto',
+    state.settings.openaiApiKey ? 'OpenAI configurado' : 'falta OpenAI API key',
+    state.settings.openaiVoiceId || state.aiVoiceSample || voiceMode === 'neutral' ? 'voz lista' : 'falta voz o Voice ID',
+    state.settings.lipSyncApiKey || state.settings.lipSyncEndpoint ? 'lip-sync configurado' : 'falta lip-sync',
+  ];
+
+  const ready = state.aiVideoPhoto
+    && state.settings.openaiApiKey
+    && (state.settings.openaiVoiceId || state.aiVoiceSample || voiceMode === 'neutral')
+    && (state.settings.lipSyncApiKey || state.settings.lipSyncEndpoint);
+
+  status.className = `ai-editor-note ${ready ? 'success' : ''}`;
+  status.textContent = ready
+    ? `Pipeline listo: ${checks.join(' · ')}. El backend puede generar guion, voz, lip-sync y render final.`
+    : `Estado: ${checks.join(' · ')}.`;
+}
+
+// ═══════════════════════════════════════════════════════════
 //  HISTORY
 // ═══════════════════════════════════════════════════════════
 function renderHistory() {
@@ -2607,12 +2847,18 @@ function renderHistory() {
   const typeMap = {
     publish: 'Reel',
     format:  'Edición',
+    'ai-video': 'Video IA',
+  };
+  const platformMap = {
+    ig: 'Instagram',
+    tt: 'TikTok',
+    ai: 'Crear IA',
   };
 
   tbody.innerHTML = items.slice().reverse().map(h => `
     <tr>
       <td style="color:var(--text-1);font-weight:500">${h.filename || h.template || '—'}</td>
-      <td>${h.platform === 'ig' ? '📸 Instagram' : h.platform === 'tt' ? '🎵 TikTok' : '—'}</td>
+      <td>${platformMap[h.platform] || '—'}</td>
       <td>${typeMap[h.type] || h.type}</td>
       <td>${statusMap[h.status] || h.status}</td>
       <td>${formatDate(h.date)}</td>
@@ -2640,7 +2886,22 @@ function renderSettings() {
   const geminiModelInput = document.getElementById('gemini-model');
   if (geminiKeyInput) geminiKeyInput.value = state.settings.geminiApiKey || '';
   if (geminiModelInput) geminiModelInput.value = state.settings.geminiModel || 'gemini-1.5-pro';
+  const openaiKeyInput = document.getElementById('openai-api-key');
+  const openaiVideoModelInput = document.getElementById('openai-video-model');
+  const openaiTtsModelInput = document.getElementById('openai-tts-model');
+  const openaiVoiceInput = document.getElementById('openai-voice-id');
+  const lipSyncProviderInput = document.getElementById('lipsync-provider');
+  const lipSyncKeyInput = document.getElementById('lipsync-api-key');
+  const lipSyncEndpointInput = document.getElementById('lipsync-endpoint');
+  if (openaiKeyInput) openaiKeyInput.value = state.settings.openaiApiKey || '';
+  if (openaiVideoModelInput) openaiVideoModelInput.value = state.settings.openaiVideoModel || 'sora-2';
+  if (openaiTtsModelInput) openaiTtsModelInput.value = state.settings.openaiTtsModel || 'gpt-4o-mini-tts';
+  if (openaiVoiceInput) openaiVoiceInput.value = state.settings.openaiVoiceId || '';
+  if (lipSyncProviderInput) lipSyncProviderInput.value = state.settings.lipSyncProvider || 'sync-labs';
+  if (lipSyncKeyInput) lipSyncKeyInput.value = state.settings.lipSyncApiKey || '';
+  if (lipSyncEndpointInput) lipSyncEndpointInput.value = state.settings.lipSyncEndpoint || '';
   updateEditorEngineStatus();
+  renderAiVideoStatus();
 
   // Tokens list
   const list = document.getElementById('tokens-list');
@@ -2696,9 +2957,28 @@ function setupDragDrop(zoneId, inputId, handler) {
   });
 }
 
+function setupTypedFileDrop(zoneId, handler, acceptsFile) {
+  const zone = document.getElementById(zoneId);
+  if (!zone) return;
+
+  zone.addEventListener('dragover', e => {
+    e.preventDefault();
+    zone.classList.add('drag-over');
+  });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files).filter(acceptsFile);
+    if (files.length) handler({ target: { files } });
+  });
+}
+
 setupDragDrop('upload-zone', 'video-input', handleVideoUpload);
 setupDragDrop('editor-upload-zone', 'editor-video-input', handleEditorUpload);
 setupDragDrop('reference-upload-zone', 'reference-video-input', handleReferenceUpload);
+setupTypedFileDrop('ai-photo-upload-zone', handleAiPhotoUpload, file => file.type.startsWith('image/'));
+setupTypedFileDrop('ai-voice-upload-zone', handleAiVoiceSampleUpload, file => file.type.startsWith('audio/') || file.type.startsWith('video/'));
 
 function setupInstagramOAuthFields() {
   const callbackInput = document.getElementById('ig-callback');
@@ -2720,6 +3000,11 @@ function setupTikTokOAuthFields() {
   if (clientKeyInput) clientKeyInput.value = localStorage.getItem('rf_tt_client_key') || TIKTOK_CLIENT_KEY;
 }
 
+function setupAiVideoCreatorEvents() {
+  const voiceMode = document.getElementById('ai-voice-mode');
+  if (voiceMode) voiceMode.addEventListener('change', renderAiVideoStatus);
+}
+
 // ═══════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════
@@ -2727,6 +3012,7 @@ function init() {
   syncGeminiGlobals();
   setupInstagramOAuthFields();
   setupTikTokOAuthFields();
+  setupAiVideoCreatorEvents();
 
   // Restore accounts
   renderIGAccounts();
