@@ -28,6 +28,18 @@ function selectPrivacyLevel(options, requested) {
   return available[0] || 'SELF_ONLY';
 }
 
+function getPublicBaseUrl(req) {
+  const proto = req.headers['x-forwarded-proto'] || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  return `${proto}://${host}`;
+}
+
+function getTikTokMediaUrl(req, videoUrl) {
+  const url = new URL('/api/tiktok/media', getPublicBaseUrl(req));
+  url.searchParams.set('url', videoUrl);
+  return url.toString();
+}
+
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('access-control-allow-methods', 'POST, OPTIONS');
@@ -62,6 +74,7 @@ export default async function handler(req, res) {
     });
     const creator = creatorInfo?.data || {};
     const selectedPrivacyLevel = selectPrivacyLevel(creator.privacy_level_options, privacyLevel);
+    const mediaUrl = getTikTokMediaUrl(req, videoUrl);
 
     const init = await fetchTikTokJson('https://open.tiktokapis.com/v2/post/publish/video/init/', {
       method: 'POST',
@@ -83,7 +96,7 @@ export default async function handler(req, res) {
         },
         source_info: {
           source: 'PULL_FROM_URL',
-          video_url: videoUrl,
+          video_url: mediaUrl,
         },
       }),
     });
@@ -95,6 +108,7 @@ export default async function handler(req, res) {
       requestedPrivacyLevel: privacyLevel,
       availablePrivacyLevels: creator.privacy_level_options || [],
       creatorUsername: creator.creator_username || null,
+      mediaUrl,
       status: 'submitted',
     });
   } catch (error) {

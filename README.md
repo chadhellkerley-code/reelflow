@@ -95,13 +95,23 @@ La ruta `api/tiktok/publish.js` publica con TikTok Direct Post usando una URL p�
 /api/tiktok/publish
 ```
 
+TikTok descarga el video desde una URL propia del proyecto mediante:
+
+```
+/api/tiktok/media
+```
+
 Para Direct Post, el OAuth de TikTok debe pedir el scope:
 
 ```env
 user.info.basic,video.publish
 ```
 
-Si se usa `PULL_FROM_URL`, TikTok puede exigir verificar el dominio público del video en el portal de Developers.
+Si se usa `PULL_FROM_URL`, TikTok exige verificar el dominio público del video en el portal de Developers. Para ReelFlow, verificar:
+
+```text
+reelflow-topaz.vercel.app
+```
 
 La ruta `api/blob/upload.js` habilita uploads directos de video a Vercel Blob:
 
