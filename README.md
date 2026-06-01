@@ -83,6 +83,12 @@ La ruta `api/instagram/publish.js` publica un Reel desde una URL pública de vid
 /api/instagram/publish
 ```
 
+La ruta `api/tiktok/exchange.js` cambia el `code` OAuth de TikTok por tokens:
+
+```
+/api/tiktok/exchange
+```
+
 La ruta `api/blob/upload.js` habilita uploads directos de video a Vercel Blob:
 
 ```

@@ -21,6 +21,7 @@ const state = {
 const PUBLIC_ORIGIN = 'https://reelflow-topaz.vercel.app';
 const INSTAGRAM_APP_ID = '1428803625601557';
 const INSTAGRAM_SCOPES = 'instagram_business_basic,instagram_business_content_publish';
+const TIKTOK_SCOPES = 'user.info.basic,video.upload';
 
 function getPublicOrigin() {
   return window.location.origin && window.location.origin !== 'null'
@@ -30,6 +31,10 @@ function getPublicOrigin() {
 
 function getInstagramCallbackUrl() {
   return `${getPublicOrigin()}/auth/instagram/callback`;
+}
+
+function getTikTokCallbackUrl() {
+  return `${getPublicOrigin()}/auth/tiktok/callback`;
 }
 
 // ── Navigation ─────────────────────────────────────────────
@@ -246,30 +251,26 @@ function saveInstagramAccount() {
 }
 
 function connectTikTok() {
-  const key    = document.getElementById('tt-client-key').value.trim();
-  const secret = document.getElementById('tt-client-secret').value.trim();
+  const key = document.getElementById('tt-client-key').value.trim();
 
-  if (!key || !secret) { toast('Completá el Client Key y Client Secret', 'error'); return; }
+  if (!key) { toast('Completá el TikTok Client Key', 'error'); return; }
 
-  localStorage.setItem('rf_tt_creds', JSON.stringify({ key, secret }));
+  const oauthState = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+  const callbackUrl = getTikTokCallbackUrl();
+  const authUrl = new URL('https://www.tiktok.com/v2/auth/authorize/');
 
-  openModal('Conectar TikTok', `
-    <p style="color:var(--text-2);font-size:14px;margin-bottom:20px">
-      En producción, esto abrirá el popup de autorización de TikTok.<br><br>
-      Para pruebas, ingresá los datos manualmente:
-    </p>
-    <div class="form-group">
-      <label>Nombre de usuario</label>
-      <input type="text" class="form-input" id="modal-tt-user" placeholder="@tuusuario" />
-    </div>
-    <div class="form-group">
-      <label>Access Token</label>
-      <input type="text" class="form-input" id="modal-tt-token" placeholder="act.xxx..." />
-    </div>
-    <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="saveTikTokAccount()">
-      Guardar cuenta
-    </button>
-  `);
+  authUrl.searchParams.set('client_key', key);
+  authUrl.searchParams.set('scope', TIKTOK_SCOPES);
+  authUrl.searchParams.set('response_type', 'code');
+  authUrl.searchParams.set('redirect_uri', callbackUrl);
+  authUrl.searchParams.set('state', oauthState);
+  authUrl.searchParams.set('disable_auto_auth', '1');
+
+  localStorage.setItem('rf_tt_client_key', key);
+  localStorage.setItem('rf_tt_oauth_state', oauthState);
+  localStorage.setItem('rf_tt_callback_url', callbackUrl);
+
+  window.location.href = authUrl.toString();
 }
 
 function saveTikTokAccount() {
@@ -819,11 +820,22 @@ function setupInstagramOAuthFields() {
   if (appIdInput) appIdInput.value = localStorage.getItem('rf_ig_app_id') || INSTAGRAM_APP_ID;
 }
 
+function setupTikTokOAuthFields() {
+  const callbackInput = document.getElementById('tt-callback');
+  const scopesInput = document.getElementById('tt-scopes');
+  const clientKeyInput = document.getElementById('tt-client-key');
+
+  if (callbackInput) callbackInput.value = getTikTokCallbackUrl();
+  if (scopesInput) scopesInput.value = TIKTOK_SCOPES;
+  if (clientKeyInput) clientKeyInput.value = localStorage.getItem('rf_tt_client_key') || '';
+}
+
 // ═══════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════
 function init() {
   setupInstagramOAuthFields();
+  setupTikTokOAuthFields();
 
   // Restore accounts
   renderIGAccounts();
