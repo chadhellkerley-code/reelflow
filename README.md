@@ -40,14 +40,14 @@ INSTAGRAM_APP_SECRET=
 TIKTOK_CLIENT_KEY=
 TIKTOK_CLIENT_SECRET=
 CREATOMATE_API_KEY=
-BACKEND_URL=https://tu-dominio.com
+BACKEND_URL=https://reelflow-topaz.vercel.app
 ```
 
 ## Callback URLs para registrar en las apps
 
 ```
-Instagram: https://tu-dominio.com/auth/instagram/callback
-TikTok:    https://tu-dominio.com/auth/tiktok/callback
+Instagram: https://reelflow-topaz.vercel.app/auth/instagram/callback
+TikTok:    https://reelflow-topaz.vercel.app/auth/tiktok/callback
 ```
 
 ## Uso sin backend

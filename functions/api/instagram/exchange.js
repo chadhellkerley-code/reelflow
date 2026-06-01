@@ -5,7 +5,7 @@ const JSON_HEADERS = {
   'access-control-allow-headers': 'content-type',
 };
 
-const DEFAULT_REDIRECT_URI = 'https://spring-mode-edfc.insta-licenses.workers.dev/auth/instagram/callback';
+const DEFAULT_REDIRECT_URI = 'https://reelflow-topaz.vercel.app/auth/instagram/callback';
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
