@@ -21,6 +21,7 @@ const state = {
 const PUBLIC_ORIGIN = 'https://reelflow-topaz.vercel.app';
 const INSTAGRAM_APP_ID = '1428803625601557';
 const INSTAGRAM_SCOPES = 'instagram_business_basic,instagram_business_content_publish';
+const TIKTOK_CLIENT_KEY = 'awcudi46dos3vgsv';
 const TIKTOK_SCOPES = 'user.info.basic,video.upload';
 
 function getPublicOrigin() {
@@ -827,7 +828,7 @@ function setupTikTokOAuthFields() {
 
   if (callbackInput) callbackInput.value = getTikTokCallbackUrl();
   if (scopesInput) scopesInput.value = TIKTOK_SCOPES;
-  if (clientKeyInput) clientKeyInput.value = localStorage.getItem('rf_tt_client_key') || '';
+  if (clientKeyInput) clientKeyInput.value = localStorage.getItem('rf_tt_client_key') || TIKTOK_CLIENT_KEY;
 }
 
 // ═══════════════════════════════════════════════════════════
