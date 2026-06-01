@@ -279,6 +279,73 @@ const LOCAL_VIDEO_TEMPLATES = [
   },
 ];
 
+const AUTOMATIC_FORMAT_TEMPLATES = [
+  {
+    key: 'kinetic_subtitles',
+    name: 'Kinetic Subtitles',
+    desc: 'Palabra por palabra, keywords grandes, cortes por idea y zoom en enfasis.',
+    tags: ['IA', 'Subtitulos'],
+    preview: 'mock-kinetic',
+    defaultHook: 'TEXTO EN RITMO',
+  },
+  {
+    key: 'hook_reveal',
+    name: 'Hook Reveal',
+    desc: 'Hook grande al inicio, reveal al segundo 2, subtitulos e ideas por seccion.',
+    tags: ['Hook', 'Reveal'],
+    preview: 'mock-hook',
+    defaultHook: 'HOOK FUERTE',
+  },
+  {
+    key: 'countdown_list',
+    name: 'Countdown List',
+    desc: 'Numeros animados, puntos de lista, zoom out y whoosh entre items.',
+    tags: ['Lista', 'Whoosh'],
+    preview: 'mock-countdown',
+    defaultHook: '3 PUNTOS',
+  },
+  {
+    key: 'documentary_cuts',
+    name: 'Documentary Cuts',
+    desc: 'Cortes cada 2.5s, reencuadre alternado, lower thirds y musica tensa.',
+    tags: ['Doc', 'Cortes'],
+    preview: 'mock-minimal',
+    defaultHook: 'LA HISTORIA',
+  },
+  {
+    key: 'split_context',
+    name: 'Split Context',
+    desc: 'Video arriba y panel inferior con resumen de ideas y keywords destacadas.',
+    tags: ['Panel', 'Contexto'],
+    preview: 'mock-split',
+    defaultHook: 'CONTEXTO',
+  },
+  {
+    key: 'minimal_text',
+    name: 'Minimal Text',
+    desc: 'Solo hook, idea central y CTA con zoom continuo limpio.',
+    tags: ['Minimal', 'CTA'],
+    preview: 'mock-minimal',
+    defaultHook: 'IDEA CENTRAL',
+  },
+  {
+    key: 'engagement_closer',
+    name: 'Engagement Closer',
+    desc: 'Subtitulos kinetic y cierre oscuro con pregunta para comentarios.',
+    tags: ['Comentarios', 'Cierre'],
+    preview: 'mock-kinetic',
+    defaultHook: 'QUE OPINAS?',
+  },
+  {
+    key: 'pov_style',
+    name: 'POV Style',
+    desc: 'Intro POV, subtitulos simples y zoom rapido en momentos de enfasis.',
+    tags: ['POV', 'Zoom'],
+    preview: 'mock-trending',
+    defaultHook: 'POV:',
+  },
+];
+
 function getPublicOrigin() {
   return window.location.origin && window.location.origin !== 'null'
     ? window.location.origin
@@ -1190,6 +1257,15 @@ function initEditor() {
   updateEditorEngineStatus();
 }
 
+function getActiveFormatTemplates() {
+  return isGeminiEnabled() ? AUTOMATIC_FORMAT_TEMPLATES : LOCAL_VIDEO_TEMPLATES;
+}
+
+function getSelectedAutomaticFormatKeys() {
+  const validKeys = new Set(AUTOMATIC_FORMAT_TEMPLATES.map(template => template.key));
+  return [...state.selectedTemplates].filter(key => validKeys.has(key));
+}
+
 function getTemplatePreviewHtml(template) {
   const preview = template.preview || 'mock-story';
   const hook = escapeHtml(template.defaultHook || template.name);
@@ -1269,10 +1345,14 @@ function renderFormatTemplates() {
   const grid = document.getElementById('instagram-format-grid');
   if (!grid) return;
 
-  const validKeys = new Set(LOCAL_VIDEO_TEMPLATES.map(template => template.key));
+  const templates = getActiveFormatTemplates();
+  const validKeys = new Set(templates.map(template => template.key));
   state.selectedTemplates = new Set([...state.selectedTemplates].filter(key => validKeys.has(key)));
+  if (isGeminiEnabled() && state.selectedTemplates.size === 0) {
+    state.selectedTemplates = new Set(AUTOMATIC_FORMAT_TEMPLATES.map(template => template.key));
+  }
 
-  grid.innerHTML = LOCAL_VIDEO_TEMPLATES.map(template => {
+  grid.innerHTML = templates.map(template => {
     const selected = state.selectedTemplates.has(template.key);
     return `
       <button type="button" class="template-card ${selected ? 'selected' : ''}" onclick="toggleFormatTemplate('${template.key}')">
@@ -1301,7 +1381,7 @@ function toggleFormatTemplate(key) {
 }
 
 function selectAllFormats() {
-  state.selectedTemplates = new Set(LOCAL_VIDEO_TEMPLATES.map(template => template.key));
+  state.selectedTemplates = new Set(getActiveFormatTemplates().map(template => template.key));
   renderFormatTemplates();
   updateFormatCount();
 }
@@ -1318,12 +1398,13 @@ function getSelectedTemplates() {
 
 function updateFormatCount() {
   const selected = state.selectedTemplates.size;
+  const templates = getActiveFormatTemplates();
   const selectedEl = document.getElementById('selected-formats-count');
   const totalEl = document.getElementById('total-formats-count');
   const genCount = document.getElementById('gen-count');
 
   if (selectedEl) selectedEl.textContent = selected;
-  if (totalEl) totalEl.textContent = LOCAL_VIDEO_TEMPLATES.length;
+  if (totalEl) totalEl.textContent = templates.length;
   if (genCount) genCount.textContent = selected;
 }
 
@@ -1340,9 +1421,12 @@ function updateEditorEngineStatus() {
 
   if (note) {
     note.textContent = hasGemini
-      ? 'Gemini analiza transcripcion, estructura y formatos automaticos antes de renderizar localmente.'
+      ? 'Gemini transcribe, detecta hook/ideas/keywords y elige automaticamente los mejores formatos de la lista visible. Videos grandes se suben con Gemini Files API.'
       : 'Gemini se activa desde Configuración. Si no hay API key, ReelFlow usa el análisis local.';
   }
+
+  renderFormatTemplates();
+  updateFormatCount();
 }
 
 function getReferenceTemplate(ref, index = 0) {
@@ -2363,33 +2447,90 @@ function renderAutomaticPendingResult(plan, index, total) {
   return id;
 }
 
+function renderAutomaticAnalysisSummary(engineResult) {
+  const analysis = engineResult.analysis || {};
+  const transcription = engineResult.transcription || {};
+  const selectedFormats = engineResult.selectedFormats || [];
+  const results = document.getElementById('generated-results');
+  if (!results) return;
+
+  const ideas = (analysis.ideas || []).slice(0, 4).map(idea => `
+    <div class="ai-analysis-row">
+      <strong>${Number(idea.start || 0).toFixed(1)}s-${Number(idea.end || 0).toFixed(1)}s</strong>
+      <span>${escapeHtml(idea.text)}</span>
+    </div>
+  `).join('');
+
+  results.insertAdjacentHTML('beforeend', `
+    <div class="ai-analysis-card">
+      <div class="ai-analysis-header">
+        <div>
+          <div class="result-name">Analisis Gemini listo</div>
+          <div class="result-meta">${Math.max(0, transcription.words?.length || 0)} palabra(s) · ${Number(transcription.duration || 0).toFixed(1)}s · ${escapeHtml(analysis.content_type || 'sin tipo')}</div>
+        </div>
+        <span class="badge badge-active">${escapeHtml(analysis.engagement_trigger || 'auto')}</span>
+      </div>
+      <div class="ai-analysis-grid">
+        <div>
+          <span class="ai-analysis-label">Hook</span>
+          <p>${escapeHtml(analysis.hook || 'Sin hook detectado')}</p>
+        </div>
+        <div>
+          <span class="ai-analysis-label">Keywords</span>
+          <p>${escapeHtml((analysis.keywords || []).join(', ') || 'Sin keywords')}</p>
+        </div>
+      </div>
+      <div class="ai-analysis-formats">
+        ${selectedFormats.map(format => `<span>${escapeHtml(format.replaceAll('_', ' '))}</span>`).join('')}
+      </div>
+      ${ideas ? `<div class="ai-analysis-ideas">${ideas}</div>` : ''}
+    </div>
+  `);
+}
+
 async function generateAutomaticFormats() {
   const btn = document.getElementById('generate-btn');
   const results = document.getElementById('generated-results');
   const statusEl = document.getElementById('editor-render-status');
   const baseVideo = state.editorVideos[0];
   const resultIds = new Map();
+  const allowedFormats = getSelectedAutomaticFormatKeys();
+
+  if (allowedFormats.length === 0) {
+    throw new Error('Selecciona al menos un formato automatico.');
+  }
 
   syncGeminiGlobals();
-  const runtime = await loadFFmpeg(statusEl);
-  const { runFormatEngine } = await import('/src/engine/formatEngine.js');
+  const { analyzeAndPlan, renderFormatQueue } = await import('/src/engine/formatEngine.js');
 
   state.generatedVideos.forEach(video => URL.revokeObjectURL(video.url));
   state.generatedVideos = [];
   results.innerHTML = `<div class="render-status" id="editor-render-status">Analizando video con Gemini...</div>`;
 
-  const engineResult = await runFormatEngine(baseVideo, {
+  const updateLiveStatus = message => {
+    const liveStatus = document.getElementById('editor-render-status');
+    if (liveStatus) liveStatus.textContent = message;
+  };
+
+  const engineResult = await analyzeAndPlan(baseVideo, {
     apiKey: getGeminiApiKey(),
     model: getGeminiModel(),
-    render: true,
-    maxFormats: Math.min(8, Math.max(1, state.selectedTemplates.size || 3)),
+    maxFormats: Math.min(8, allowedFormats.length),
+    allowedFormats,
+    onProgress: event => {
+      if (event.message) updateLiveStatus(event.message);
+    },
+  });
+
+  results.innerHTML = '';
+  renderAutomaticAnalysisSummary(engineResult);
+  results.insertAdjacentHTML('beforeend', `<div class="render-status" id="editor-render-status">Cargando FFmpeg.wasm para renderizar...</div>`);
+  const runtime = await loadFFmpeg(document.getElementById('editor-render-status'));
+
+  const renders = await renderFormatQueue(baseVideo, engineResult.plans, {
     ffmpeg: runtime.instance,
     fetchFile: runtime.fetchFile,
     onProgress: event => {
-      if (event.message) {
-        const liveStatus = document.getElementById('editor-render-status');
-        if (liveStatus) liveStatus.textContent = event.message;
-      }
       if (event.format && Number.isFinite(event.progress)) {
         const id = resultIds.get(event.format);
         if (id) setRenderStatus(`${id}_status`, `Procesando... ${event.progress}%`);
@@ -2434,19 +2575,19 @@ async function generateAutomaticFormats() {
 
   saveHistory();
   btn.innerHTML = `<span>◧</span> Generar <span id="gen-count">${state.selectedTemplates.size}</span> formato(s)`;
-  toast(`${engineResult.renders.length} formato(s) automaticos generados`, 'success');
+  toast(`${renders.length} formato(s) automaticos generados`, 'success');
 }
 
 async function generateFormats() {
   if (state.editorVideos.length === 0) { toast('Subí tu video base', 'error'); return; }
-  const selectedTemplates = getSelectedTemplates();
-  if (selectedTemplates.length === 0) { toast('Seleccioná al menos un formato de Instagram', 'error'); return; }
+  if (!isGeminiEnabled() && getSelectedTemplates().length === 0) {
+    toast('Seleccioná al menos un formato de Instagram', 'error');
+    return;
+  }
 
   const btn = document.getElementById('generate-btn');
-  const selectedReferences = state.referenceVideos.filter(ref => state.selectedReferences.has(ref.id));
-  const referenceMetas = new Map();
   btn.disabled = true;
-  btn.innerHTML = `<span class="spinner"></span> Procesando ${selectedTemplates.length} formato(s)...`;
+  btn.innerHTML = `<span class="spinner"></span> Procesando formato(s)...`;
 
   document.getElementById('editor-step-4').style.display = 'block';
   const results = document.getElementById('generated-results');
@@ -2466,6 +2607,11 @@ async function generateFormats() {
     }
     return;
   }
+
+  const selectedTemplates = getSelectedTemplates();
+  const selectedReferences = state.referenceVideos.filter(ref => state.selectedReferences.has(ref.id));
+  const referenceMetas = new Map();
+  btn.innerHTML = `<span class="spinner"></span> Procesando ${selectedTemplates.length} formato(s)...`;
 
   try {
     const runtime = await loadFFmpeg(statusEl);

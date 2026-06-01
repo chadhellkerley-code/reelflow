@@ -31,6 +31,9 @@ export function selectFormats(analysisResult, options = {}) {
   const maxFormats = Math.max(1, Number(options.maxFormats || 3));
   const contentType = analysisResult?.content_type || 'educational';
   const trigger = analysisResult?.engagement_trigger || 'save';
+  const allowedFormats = Array.isArray(options.allowedFormats) && options.allowedFormats.length > 0
+    ? new Set(options.allowedFormats)
+    : null;
   const selected = [...(FORMAT_RULES[contentType] || FORMAT_RULES.educational)];
 
   if (contentType === 'list' && !selected.includes('countdown_list')) selected.unshift('countdown_list');
@@ -39,7 +42,15 @@ export function selectFormats(analysisResult, options = {}) {
   if (trigger === 'save' && !selected.includes('split_context')) selected.push('split_context');
   if (trigger === 'follow' && !selected.includes('minimal_text')) selected.push('minimal_text');
 
-  return Array.from(new Set(selected)).slice(0, maxFormats);
+  const normalized = Array.from(new Set(selected));
+  const filtered = allowedFormats
+    ? normalized.filter(format => allowedFormats.has(format))
+    : normalized;
+  const fallback = allowedFormats
+    ? Array.from(allowedFormats).filter(format => FORMAT_GENERATORS[format])
+    : normalized;
+
+  return (filtered.length > 0 ? filtered : fallback).slice(0, maxFormats);
 }
 
 // Generates complete edit plans for the selected formats.
@@ -54,4 +65,3 @@ export function generatePlans(analysisResult, options = {}) {
     return generator(analysisResult);
   });
 }
-

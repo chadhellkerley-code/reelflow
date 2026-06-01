@@ -8,8 +8,12 @@ export async function analyzeAndPlan(videoFile, options = {}) {
   options.onProgress?.({ step: 'start', message: 'Iniciando analisis del video...' });
   const transcription = await transcribeVideo(videoFile, options);
   const analysis = await analyzeTranscript(transcription, options);
-  const selectedFormats = selectFormats(analysis, options);
+  const selectedFormats = selectFormats(analysis, {
+    ...options,
+    allowedFormats: options.allowedFormats,
+  });
   const plans = generatePlans(analysis, { ...options, formats: selectedFormats });
+  options.onPlansReady?.({ transcription, analysis, selectedFormats, plans });
 
   return {
     transcription,
@@ -35,4 +39,3 @@ export { transcribeVideo } from './transcriber.js';
 export { analyzeTranscript } from './analyzer.js';
 export { generatePlans, selectFormats } from './formatSelector.js';
 export { renderFormatQueue } from './ffmpegRunner.js';
-
