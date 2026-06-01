@@ -499,13 +499,19 @@ async function uploadVideoToStorage(file, statusEl) {
   const pathname = `reels/${Date.now()}-${file.name.replace(/[^a-z0-9._-]/gi, '-')}`;
   const blob = await upload(pathname, file, {
     access: 'public',
+    contentType: file.type || 'video/mp4',
     handleUploadUrl: '/api/blob/upload',
+    multipart: true,
     onUploadProgress: ({ percentage }) => {
-      statusEl.textContent = `Subiendo video a storage... ${Math.round(percentage)}%`;
+      const progress = Math.round(percentage);
+      statusEl.textContent = progress >= 100
+        ? 'Finalizando subida del video...'
+        : `Subiendo video a storage... ${progress}%`;
     },
   });
 
   if (!blob?.url) throw new Error('No se pudo obtener la URL pública del video.');
+  statusEl.textContent = 'Video subido. Preparando publicación en Instagram...';
   return blob.url;
 }
 

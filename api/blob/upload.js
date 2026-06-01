@@ -27,6 +27,7 @@ export default async function handler(req, res) {
             'video/x-m4v',
             'video/webm',
           ],
+          maximumSizeInBytes: 500 * 1024 * 1024,
           addRandomSuffix: true,
           tokenPayload: JSON.stringify({ uploadedAt: Date.now() }),
         };
