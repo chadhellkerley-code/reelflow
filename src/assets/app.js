@@ -12,10 +12,19 @@ const state = {
   settings: JSON.parse(localStorage.getItem('rf_settings') || '{"backendUrl":"http://localhost:4000"}'),
   selectedVideo: null,
   editorVideos: [],
-  selectedTemplates: new Set(['hook-reveal']),
+  referenceVideos: [],
+  selectedReferences: new Set(),
+  generatedVideos: [],
   selectedAccounts: new Set(),
   pubType: 'reel',
   scheduleType: 'now',
+  ffmpeg: {
+    instance: null,
+    fetchFile: null,
+    loaded: false,
+    loading: false,
+    activeStatusId: null,
+  },
 };
 
 const PUBLIC_ORIGIN = 'https://reelflow-topaz.vercel.app';
@@ -23,6 +32,132 @@ const INSTAGRAM_APP_ID = '1428803625601557';
 const INSTAGRAM_SCOPES = 'instagram_business_basic,instagram_business_content_publish';
 const TIKTOK_CLIENT_KEY = 'sbaw89mga3yconmz26';
 const TIKTOK_SCOPES = 'user.info.basic,video.publish';
+const FFMPEG_VERSION = '0.12.15';
+const FFMPEG_UTIL_VERSION = '0.12.2';
+const FFMPEG_CORE_VERSION = '0.12.10';
+
+const LOCAL_VIDEO_TEMPLATES = [
+  {
+    key: 'vertical-crop',
+    name: 'Reels 9:16',
+    desc: 'Recorte vertical centrado para Instagram y TikTok',
+    tags: ['9:16', 'Reels'],
+    preview: 'mock-story',
+    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'),
+  },
+  {
+    key: 'vertical-fit',
+    name: '9:16 sin recorte',
+    desc: 'Ajusta el video completo con fondo negro',
+    tags: ['9:16', 'Fit'],
+    preview: 'mock-square',
+    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black'),
+  },
+  {
+    key: 'blur-bg',
+    name: 'Blur Background',
+    desc: 'Fondo desenfocado con el video encima',
+    tags: ['9:16', 'Blur'],
+    preview: 'mock-gradient-overlay',
+    command: (input, output) => ffmpegComplexCommand(input, output, '[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=18:1[bg];[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2[v]'),
+  },
+  {
+    key: 'square-crop',
+    name: 'Cuadrado 1:1',
+    desc: 'Recorte cuadrado para feed',
+    tags: ['1:1', 'Feed'],
+    preview: 'mock-square',
+    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080'),
+  },
+  {
+    key: 'square-fit',
+    name: '1:1 con margen',
+    desc: 'Video completo dentro de lienzo cuadrado',
+    tags: ['1:1', 'Fit'],
+    preview: 'mock-minimal',
+    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2:black'),
+  },
+  {
+    key: 'landscape',
+    name: 'Horizontal 16:9',
+    desc: 'Versión horizontal para YouTube o X',
+    tags: ['16:9', 'Wide'],
+    preview: 'mock-landscape',
+    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080'),
+  },
+  {
+    key: 'white-frame',
+    name: 'Marco Blanco',
+    desc: 'Formato vertical con borde limpio',
+    tags: ['9:16', 'Clean'],
+    preview: 'mock-story',
+    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1000:1778:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:white'),
+  },
+  {
+    key: 'zoom-punch',
+    name: 'Zoom Punch',
+    desc: 'Zoom fijo para más impacto visual',
+    tags: ['9:16', 'Impacto'],
+    preview: 'mock-zoom',
+    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1188:2112:force_original_aspect_ratio=increase,crop=1080:1920'),
+  },
+  {
+    key: 'mirror',
+    name: 'Mirror',
+    desc: 'Invierte horizontalmente el video',
+    tags: ['9:16', 'Flip'],
+    preview: 'mock-duet',
+    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,hflip'),
+  },
+  {
+    key: 'split-mirror',
+    name: 'Split Mirror',
+    desc: 'Dos mitades simétricas estilo reacción',
+    tags: ['9:16', 'Split'],
+    preview: 'mock-split',
+    command: (input, output) => ffmpegComplexCommand(input, output, '[0:v]scale=540:1920:force_original_aspect_ratio=increase,crop=540:1920[left];[0:v]hflip,scale=540:1920:force_original_aspect_ratio=increase,crop=540:1920[right];[left][right]hstack=inputs=2[v]'),
+  },
+  {
+    key: 'black-white',
+    name: 'B/N',
+    desc: 'Blanco y negro con recorte vertical',
+    tags: ['9:16', 'B/N'],
+    preview: 'mock-minimal',
+    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=gray'),
+  },
+  {
+    key: 'punchy-color',
+    name: 'Color Punch',
+    desc: 'Más contraste y saturación',
+    tags: ['Color', 'Viral'],
+    preview: 'mock-gradient-overlay',
+    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,eq=contrast=1.18:saturation=1.18'),
+  },
+  {
+    key: 'warm',
+    name: 'Warm',
+    desc: 'Look cálido para lifestyle',
+    tags: ['Color', 'Warm'],
+    preview: 'mock-trending',
+    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,eq=saturation=1.1:gamma_r=1.08'),
+  },
+  {
+    key: 'sharpen',
+    name: 'Sharpen',
+    desc: 'Más nitidez para clips comprimidos',
+    tags: ['HD', 'Nitidez'],
+    preview: 'mock-hook',
+    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,unsharp=5:5:1.0:5:5:0.0'),
+  },
+  {
+    key: 'fade-in',
+    name: 'Fade In',
+    desc: 'Entrada suave desde negro',
+    tags: ['Intro', '9:16'],
+    preview: 'mock-countdown',
+    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fade=t=in:st=0:d=0.6'),
+  },
+];
 
 function getPublicOrigin() {
   return window.location.origin && window.location.origin !== 'null'
@@ -69,6 +204,7 @@ function navigateTo(page) {
   // Page-specific init
   if (page === 'dashboard') renderDashboard();
   if (page === 'publisher') renderPublisherAccounts();
+  if (page === 'editor')    initEditor();
   if (page === 'history')   renderHistory();
   if (page === 'settings')  renderSettings();
 }
@@ -96,6 +232,15 @@ function toast(message, type = 'info') {
   setTimeout(() => el.remove(), 3500);
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
 // ── Modal ──────────────────────────────────────────────────
 function openModal(title, html) {
   document.getElementById('modal-title').textContent = title;
@@ -116,7 +261,6 @@ function saveHistory() {
 }
 function saveSettings() {
   state.settings.backendUrl    = document.getElementById('backend-url').value;
-  state.settings.creatomateKey = document.getElementById('settings-creatomate').value;
   localStorage.setItem('rf_settings', JSON.stringify(state.settings));
   toast('Configuración guardada', 'success');
 }
@@ -602,8 +746,9 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 //  EDITOR
 // ═══════════════════════════════════════════════════════════
 function handleEditorUpload(event) {
-  const files = Array.from(event.target.files);
-  state.editorVideos = [...state.editorVideos, ...files];
+  const file = Array.from(event.target.files).find(f => f.type.startsWith('video/'));
+  if (!file) return;
+  state.editorVideos = [file];
   renderEditorVideos();
 }
 
@@ -628,109 +773,338 @@ function removeEditorVideo(i) {
   renderEditorVideos();
 }
 
-function toggleTemplate(el) {
-  const key = el.dataset.template;
-  if (state.selectedTemplates.has(key)) {
-    state.selectedTemplates.delete(key);
-    el.classList.remove('selected');
-  } else {
-    if (state.selectedTemplates.size >= 15) { toast('Máximo 15 formatos', 'error'); return; }
-    state.selectedTemplates.add(key);
-    el.classList.add('selected');
+function ffmpegOutputArgs(output) {
+  return [
+    '-map', '[v]',
+    '-map', '0:a?',
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-crf', '28',
+    '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-shortest',
+    '-movflags', 'faststart',
+    output,
+  ];
+}
+
+function ffmpegVideoFilterCommand(input, output, filter) {
+  return [
+    '-i', input,
+    '-filter_complex', `[0:v]${filter}[v]`,
+    ...ffmpegOutputArgs(output),
+  ];
+}
+
+function ffmpegComplexCommand(input, output, filterGraph) {
+  return [
+    '-i', input,
+    '-filter_complex', filterGraph,
+    ...ffmpegOutputArgs(output),
+  ];
+}
+
+function initEditor() {
+  renderReferenceVideos();
+  updateReferenceCount();
+}
+
+function getReferenceTemplate(ref, index = 0) {
+  const key = ref?.templateKey || LOCAL_VIDEO_TEMPLATES[index % LOCAL_VIDEO_TEMPLATES.length].key;
+  return getTemplateByKey(key) || LOCAL_VIDEO_TEMPLATES[0];
+}
+
+function handleReferenceUpload(event) {
+  const files = Array.from(event.target.files).filter(f => f.type.startsWith('video/'));
+  const remainingSlots = Math.max(0, 15 - state.referenceVideos.length);
+  const accepted = files.slice(0, remainingSlots);
+
+  if (accepted.length < files.length) {
+    toast('Podés cargar hasta 15 videos de referencia', 'error');
   }
-  updateTemplateCount();
-}
 
-function selectAllTemplates() {
-  document.querySelectorAll('.template-card').forEach(el => {
-    state.selectedTemplates.add(el.dataset.template);
-    el.classList.add('selected');
+  accepted.forEach((file, offset) => {
+    const index = state.referenceVideos.length + offset;
+    const template = LOCAL_VIDEO_TEMPLATES[index % LOCAL_VIDEO_TEMPLATES.length];
+    const id = `ref_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    state.referenceVideos.push({
+      id,
+      file,
+      name: file.name,
+      size: file.size,
+      previewUrl: URL.createObjectURL(file),
+      templateKey: template.key,
+    });
+    state.selectedReferences.add(id);
   });
-  updateTemplateCount();
+
+  event.target.value = '';
+  renderReferenceVideos();
 }
 
-function clearTemplates() {
-  state.selectedTemplates.clear();
-  document.querySelectorAll('.template-card').forEach(el => el.classList.remove('selected'));
-  updateTemplateCount();
+function renderReferenceVideos() {
+  const grid = document.getElementById('reference-videos-grid');
+  if (!grid) return;
+
+  if (state.referenceVideos.length === 0) {
+    grid.innerHTML = `<div class="empty-reference-state">Agregá videos de referencia para crear modelos de edición.</div>`;
+    updateReferenceCount();
+    return;
+  }
+
+  grid.innerHTML = state.referenceVideos.map((ref, i) => {
+    const selected = state.selectedReferences.has(ref.id);
+    const template = getReferenceTemplate(ref, i);
+    return `
+      <div class="reference-card ${selected ? 'selected' : ''}" data-reference-id="${ref.id}" onclick="toggleReferenceVideo('${ref.id}')">
+        <div class="reference-preview">
+          <video src="${ref.previewUrl}" muted playsinline preload="metadata"></video>
+        </div>
+        <div class="reference-info">
+          <div class="reference-name">${escapeHtml(ref.name)}</div>
+          <div class="reference-meta">${(ref.size / 1024 / 1024).toFixed(1)} MB · ${escapeHtml(template.name)}</div>
+        </div>
+        <button class="reference-remove" onclick="event.stopPropagation(); removeReferenceVideo('${ref.id}')" aria-label="Quitar referencia">×</button>
+        <div class="template-check">✓</div>
+      </div>
+    `;
+  }).join('');
+
+  updateReferenceCount();
 }
 
-function updateTemplateCount() {
-  const c = state.selectedTemplates.size;
-  document.getElementById('selected-templates-count').textContent = c;
-  document.getElementById('gen-count').textContent = c;
+function toggleReferenceVideo(id) {
+  if (state.selectedReferences.has(id)) {
+    state.selectedReferences.delete(id);
+  } else {
+    state.selectedReferences.add(id);
+  }
+  renderReferenceVideos();
+}
+
+function removeReferenceVideo(id) {
+  const ref = state.referenceVideos.find(item => item.id === id);
+  if (ref?.previewUrl) URL.revokeObjectURL(ref.previewUrl);
+  state.referenceVideos = state.referenceVideos.filter(item => item.id !== id);
+  state.selectedReferences.delete(id);
+  renderReferenceVideos();
+}
+
+function selectAllReferences() {
+  state.referenceVideos.forEach(ref => state.selectedReferences.add(ref.id));
+  renderReferenceVideos();
+}
+
+function clearReferences() {
+  state.selectedReferences.clear();
+  renderReferenceVideos();
+}
+
+function updateReferenceCount() {
+  const selected = state.selectedReferences.size;
+  const total = state.referenceVideos.length;
+  const selectedEl = document.getElementById('selected-references-count');
+  const totalEl = document.getElementById('total-references-count');
+  const genCount = document.getElementById('gen-count');
+
+  if (selectedEl) selectedEl.textContent = selected;
+  if (totalEl) totalEl.textContent = total;
+  if (genCount) genCount.textContent = selected;
+}
+
+function setRenderStatus(id, text, type = '') {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = `result-meta ${type}`.trim();
+  el.textContent = text;
+}
+
+function downloadGeneratedVideo(id) {
+  const item = state.generatedVideos.find(video => video.id === id);
+  if (!item) return;
+
+  const link = document.createElement('a');
+  link.href = item.url;
+  link.download = item.file.name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function useGeneratedForPublish(id) {
+  const item = state.generatedVideos.find(video => video.id === id);
+  if (!item) return;
+
+  state.selectedVideo = item.file;
+  const input = document.getElementById('video-input');
+  if (input) input.value = '';
+
+  navigateTo('publisher');
+  const preview = document.getElementById('video-preview');
+  if (preview) preview.src = item.url;
+  document.getElementById('upload-zone').style.display = 'none';
+  document.getElementById('video-preview-container').style.display = 'flex';
+  document.getElementById('video-info').textContent = `${item.file.name} · ${(item.file.size / 1024 / 1024).toFixed(1)} MB`;
+  document.getElementById('video-public-url').value = '';
+  toast('Video listo para publicar', 'success');
+}
+
+async function loadFFmpeg(statusEl) {
+  if (state.ffmpeg.loaded) return state.ffmpeg;
+  if (state.ffmpeg.loading) {
+    while (state.ffmpeg.loading) await sleep(250);
+    return state.ffmpeg;
+  }
+
+  state.ffmpeg.loading = true;
+  statusEl.textContent = 'Cargando FFmpeg.wasm por primera vez...';
+
+  try {
+    const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
+      import(`https://esm.sh/@ffmpeg/ffmpeg@${FFMPEG_VERSION}`),
+      import(`https://esm.sh/@ffmpeg/util@${FFMPEG_UTIL_VERSION}`),
+    ]);
+
+    const ffmpeg = new FFmpeg();
+    const baseURL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${FFMPEG_CORE_VERSION}/dist/umd`;
+
+    ffmpeg.on('progress', ({ progress }) => {
+      if (!state.ffmpeg.activeStatusId) return;
+      const pct = Math.max(0, Math.min(100, Math.round((progress || 0) * 100)));
+      setRenderStatus(state.ffmpeg.activeStatusId, `Procesando... ${pct}%`);
+    });
+
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    });
+
+    state.ffmpeg.instance = ffmpeg;
+    state.ffmpeg.fetchFile = fetchFile;
+    state.ffmpeg.loaded = true;
+    return state.ffmpeg;
+  } finally {
+    state.ffmpeg.loading = false;
+  }
+}
+
+function getTemplateByKey(key) {
+  return LOCAL_VIDEO_TEMPLATES.find(template => template.key === key);
+}
+
+function safeFilePart(value) {
+  return String(value || 'video').replace(/\.[^.]+$/, '').replace(/[^a-z0-9._-]/gi, '-').slice(0, 80);
+}
+
+function renderPendingResult(reference, template, index) {
+  const item = document.createElement('div');
+  const id = `render_${Date.now()}_${index}`;
+  item.className = 'result-item generating-item';
+  item.id = id;
+  item.innerHTML = `
+    <div class="result-thumb">◧</div>
+    <div class="result-info">
+      <div class="result-name">Ref ${index + 1}: ${escapeHtml(reference.name)}</div>
+      <div class="result-meta" id="${id}_status">En cola...</div>
+      <div class="result-meta">Receta local: ${escapeHtml(template.name)}</div>
+      <div class="result-actions" id="${id}_actions"></div>
+    </div>
+  `;
+  document.getElementById('generated-results').appendChild(item);
+  return id;
+}
+
+function renderCompletedResult(resultId, generated) {
+  const thumb = document.querySelector(`#${resultId} .result-thumb`);
+  const actions = document.getElementById(`${resultId}_actions`);
+  if (thumb) {
+    thumb.innerHTML = `<video src="${generated.url}" muted playsinline controls></video>`;
+  }
+  setRenderStatus(`${resultId}_status`, 'Listo para descargar', 'success');
+  if (actions) {
+    actions.innerHTML = `
+      <button class="btn btn-outline btn-sm" onclick="downloadGeneratedVideo('${generated.id}')">↓ Descargar</button>
+      <button class="btn btn-ghost btn-sm" onclick="useGeneratedForPublish('${generated.id}')">◆ Publicar</button>
+    `;
+  }
 }
 
 async function generateFormats() {
-  if (state.editorVideos.length === 0) { toast('Subí al menos un video', 'error'); return; }
-  if (state.selectedTemplates.size === 0) { toast('Seleccioná al menos un formato', 'error'); return; }
+  if (state.editorVideos.length === 0) { toast('Subí tu video base', 'error'); return; }
+  if (state.selectedReferences.size === 0) { toast('Seleccioná al menos un video de referencia', 'error'); return; }
 
   const btn = document.getElementById('generate-btn');
+  const selectedReferences = state.referenceVideos.filter(ref => state.selectedReferences.has(ref.id));
   btn.disabled = true;
-  btn.innerHTML = `<span class="spinner"></span> Generando ${state.selectedTemplates.size} formato(s)...`;
+  btn.innerHTML = `<span class="spinner"></span> Procesando ${selectedReferences.length} referencia(s)...`;
 
-  // Show results step
   document.getElementById('editor-step-4').style.display = 'block';
   const results = document.getElementById('generated-results');
-  results.innerHTML = '';
+  results.innerHTML = `<div class="render-status" id="editor-render-status">Preparando motor local...</div>`;
+  const statusEl = document.getElementById('editor-render-status');
 
-  const templates = Array.from(state.selectedTemplates);
-  const templateNames = {
-    'hook-reveal':           'Hook + Reveal',
-    'kinetic-subs':          'Subtítulos Cinéticos',
-    'split-screen':          'Split Screen',
-    'minimal-text':          'Texto Minimalista',
-    'before-after':          'Before / After',
-    'slideshow':             'Slideshow Viral',
-    'countdown':             'Countdown / Lista',
-    'zoom-text':             'Zoom + Texto Bold',
-    'duet-style':            'Estilo Duet',
-    'trending-font':         'POV / Trending Font',
-    'glitch-transition':     'Glitch Transition',
-    'square-format':         'Formato Cuadrado',
-    'landscape':             'Formato Landscape',
-    'text-overlay-gradient': 'Overlay Gradiente',
-    'story-style':           'Estilo Story',
-  };
+  try {
+    const runtime = await loadFFmpeg(statusEl);
+    const ffmpeg = runtime.instance;
+    const baseVideo = state.editorVideos[0];
+    const inputName = `input-${Date.now()}.${baseVideo.name.split('.').pop() || 'mp4'}`;
+    statusEl.textContent = 'Cargando video en memoria local...';
+    await ffmpeg.writeFile(inputName, await runtime.fetchFile(baseVideo));
 
-  // Simulate rendering one by one (Creatomate API call per template)
-  for (let i = 0; i < templates.length; i++) {
-    const key  = templates[i];
-    const name = templateNames[key] || key;
+    state.generatedVideos.forEach(video => URL.revokeObjectURL(video.url));
+    state.generatedVideos = [];
+    results.innerHTML = '';
 
-    await sleep(600 + Math.random() * 400);
+    for (let i = 0; i < selectedReferences.length; i++) {
+      const reference = selectedReferences[i];
+      const referenceIndex = state.referenceVideos.findIndex(ref => ref.id === reference.id);
+      const template = getReferenceTemplate(reference, referenceIndex >= 0 ? referenceIndex : i);
+      const resultId = renderPendingResult(reference, template, i);
+      const outputName = `${safeFilePart(baseVideo.name)}-${safeFilePart(reference.name)}.mp4`;
+      state.ffmpeg.activeStatusId = `${resultId}_status`;
+      setRenderStatus(state.ffmpeg.activeStatusId, `Procesando referencia ${i + 1} de ${selectedReferences.length}...`);
 
-    const item = document.createElement('div');
-    item.className = 'result-item generating-item';
-    item.style.animationDelay = `${i * 0.05}s`;
-    item.innerHTML = `
-      <div class="result-thumb">◧</div>
-      <div class="result-info">
-        <div class="result-name">${name}</div>
-        <div class="result-actions">
-          <button class="btn btn-outline btn-sm" onclick="toast('Descarga lista cuando el backend esté activo','success')">↓ Descargar</button>
-          <button class="btn btn-ghost btn-sm" onclick="toast('Publicar desde el backend','success')">◆ Publicar</button>
-        </div>
-      </div>
-    `;
-    results.appendChild(item);
+      await ffmpeg.exec(template.command(inputName, outputName));
+      const data = await ffmpeg.readFile(outputName);
+      const blob = new Blob([data], { type: 'video/mp4' });
+      const generated = {
+        id: `gen_${Date.now()}_${i}`,
+        template: template.key,
+        name: reference.name,
+        referenceId: reference.id,
+        url: URL.createObjectURL(blob),
+        file: new File([blob], outputName, { type: 'video/mp4' }),
+      };
+      state.generatedVideos.push(generated);
+      renderCompletedResult(resultId, generated);
 
-    // Log to history
-    state.history.push({
-      id: `fmt_${Date.now()}_${i}`,
-      type: 'format',
-      template: key,
-      filename: state.editorVideos[0].name,
-      status: 'ready',
-      date: new Date().toISOString(),
-    });
+      state.history.push({
+        id: `fmt_${Date.now()}_${i}`,
+        type: 'format',
+        template: template.key,
+        filename: baseVideo.name,
+        referenceFilename: reference.name,
+        status: 'ready',
+        date: new Date().toISOString(),
+      });
+
+      await ffmpeg.deleteFile(outputName).catch(() => {});
+    }
+
+    state.ffmpeg.activeStatusId = null;
+    await ffmpeg.deleteFile(inputName).catch(() => {});
+
+    saveHistory();
+    toast(`${selectedReferences.length} referencia(s) procesada(s) en tu navegador`, 'success');
+  } catch (error) {
+    state.ffmpeg.activeStatusId = null;
+    results.innerHTML = `<div class="render-status error">${escapeHtml(error.message || 'No se pudo preparar el editor.')}</div>`;
+    toast(error.message || 'No se pudo procesar el video', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<span>◧</span> Generar <span id="gen-count">${state.selectedReferences.size}</span> modelo(s)`;
   }
-
-  saveHistory();
-
-  btn.disabled = false;
-  btn.innerHTML = `<span>◧</span> Generar <span id="gen-count">${state.selectedTemplates.size}</span> formato(s)`;
-  toast(`${templates.length} formato(s) generado(s)`, 'success');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -755,6 +1129,7 @@ function renderHistory() {
     pending:   '<span class="badge badge-pending">En proceso</span>',
     draft:     '<span class="badge badge-pending">Borrador</span>',
     ready:     '<span class="badge badge-active">Listo</span>',
+    'ready-for-analysis': '<span class="badge badge-pending">Referencia</span>',
     error:     '<span class="badge badge-error">Error</span>',
   };
   const typeMap = {
@@ -789,7 +1164,6 @@ document.getElementById('history-filter').addEventListener('change', renderHisto
 // ═══════════════════════════════════════════════════════════
 function renderSettings() {
   if (state.settings.backendUrl)    document.getElementById('backend-url').value = state.settings.backendUrl;
-  if (state.settings.creatomateKey) document.getElementById('settings-creatomate').value = state.settings.creatomateKey;
 
   // Tokens list
   const list = document.getElementById('tokens-list');
@@ -847,6 +1221,7 @@ function setupDragDrop(zoneId, inputId, handler) {
 
 setupDragDrop('upload-zone', 'video-input', handleVideoUpload);
 setupDragDrop('editor-upload-zone', 'editor-video-input', handleEditorUpload);
+setupDragDrop('reference-upload-zone', 'reference-video-input', handleReferenceUpload);
 
 function setupInstagramOAuthFields() {
   const callbackInput = document.getElementById('ig-callback');
@@ -882,8 +1257,8 @@ function init() {
   // Initial page
   navigateTo('dashboard');
 
-  // Update template count
-  updateTemplateCount();
+  // Update editor counters
+  updateReferenceCount();
 
   console.log('%c ReelFlow v1.0 ', 'background:#7c6dfa;color:white;padding:4px 8px;border-radius:4px;font-family:monospace;font-weight:bold');
   console.log('Frontend scaffold listo. Conectá el backend en:', state.settings.backendUrl);

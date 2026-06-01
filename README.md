@@ -25,7 +25,7 @@ reelflow/
 - **Dashboard** — Estadísticas y resumen de actividad
 - **Cuentas** — Conexión OAuth de Instagram y TikTok
 - **Publicar** — Subida y publicación de reels
-- **Editor** — Selector de 15 templates virales + generación
+- **Editor** — Video base + hasta 15 videos de referencia seleccionables
 - **Historial** — Log de publicaciones y formatos
 - **Configuración** — Backend URL, API keys, tokens
 
@@ -39,7 +39,6 @@ INSTAGRAM_APP_ID=1428803625601557
 INSTAGRAM_APP_SECRET=
 TIKTOK_CLIENT_KEY=
 TIKTOK_CLIENT_SECRET=
-CREATOMATE_API_KEY=
 BACKEND_URL=https://reelflow-topaz.vercel.app
 ```
 
@@ -135,7 +134,7 @@ Diagnostico rapido:
 ## Stack recomendado para el backend
 
 - **Runtime:** Node.js + Express
-- **Video:** FFmpeg + Creatomate API
+- **Video:** FFmpeg.wasm en el navegador para procesar variantes locales
 - **Storage:** AWS S3 / Cloudflare R2
 - **DB:** PostgreSQL (cuentas, tokens, historial)
 - **Deploy:** Railway / Render
