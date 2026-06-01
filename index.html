@@ -255,8 +255,8 @@
                       <input type="text" id="tt-client-key" placeholder="Tu TikTok Client Key" class="form-input" />
                     </div>
                     <div class="form-group">
-                      <label>Client Secret</label>
-                      <input type="text" id="tt-scopes" value="user.info.basic" class="form-input" readonly />
+                      <label>Scopes</label>
+                      <input type="text" id="tt-scopes" value="user.info.basic,video.publish" class="form-input" readonly />
                     </div>
                   </div>
                   <div class="form-group">
@@ -353,6 +353,15 @@
                 <div class="form-group" id="cover-time-group">
                   <label>Frame de portada (segundos)</label>
                   <input type="number" class="form-input" id="cover-time" value="0" min="0" step="0.1" />
+                </div>
+                <div class="form-group">
+                  <label>Visibilidad TikTok</label>
+                  <select class="form-input" id="tiktok-privacy">
+                    <option value="SELF_ONLY">Solo yo</option>
+                    <option value="MUTUAL_FOLLOW_FRIENDS">Amigos mutuos</option>
+                    <option value="FOLLOWER_OF_CREATOR">Seguidores</option>
+                    <option value="PUBLIC_TO_EVERYONE">Publico</option>
+                  </select>
                 </div>
               </div>
             </div>

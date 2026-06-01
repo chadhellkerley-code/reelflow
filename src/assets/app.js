@@ -22,7 +22,7 @@ const PUBLIC_ORIGIN = 'https://reelflow-topaz.vercel.app';
 const INSTAGRAM_APP_ID = '1428803625601557';
 const INSTAGRAM_SCOPES = 'instagram_business_basic,instagram_business_content_publish';
 const TIKTOK_CLIENT_KEY = 'sbaw89mga3yconmz26';
-const TIKTOK_SCOPES = 'user.info.basic';
+const TIKTOK_SCOPES = 'user.info.basic,video.publish';
 
 function getPublicOrigin() {
   return window.location.origin && window.location.origin !== 'null'
@@ -428,16 +428,16 @@ async function publishReel() {
 
   if (!videoUrl && !state.selectedVideo) { toast('Seleccioná un video o pegá una URL pública', 'error'); return; }
   if (state.selectedAccounts.size === 0) { toast('Seleccioná al menos una cuenta', 'error'); return; }
-  if (state.pubType === 'draft') { toast('Instagram no permite crear drafts por API en este flujo', 'error'); return; }
+  if (state.pubType === 'draft') { toast('Este flujo usa publicación directa. Elegí Reel (Feed).', 'error'); return; }
 
   const btn = document.getElementById('publish-btn');
   const status = document.getElementById('publish-status');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Publicando...';
   status.className = 'publish-status loading';
-  status.textContent = videoUrl ? 'Creando contenedor de Instagram...' : 'Subiendo video a storage...';
+  status.textContent = videoUrl ? 'Preparando publicación...' : 'Subiendo video a storage...';
 
-  const accounts = state.accounts.filter(a => state.selectedAccounts.has(a.id) && a.platform === 'ig');
+  const accounts = state.accounts.filter(a => state.selectedAccounts.has(a.id));
   const results = [];
 
   try {
@@ -447,7 +447,15 @@ async function publishReel() {
     }
 
     for (const acc of accounts) {
-      const data = await publishInstagramReel(acc, { videoUrl, caption, thumbOffset }, status);
+      const payload = {
+        videoUrl,
+        caption,
+        thumbOffset,
+        privacyLevel: document.getElementById('tiktok-privacy')?.value || 'SELF_ONLY',
+      };
+      const data = acc.platform === 'tt'
+        ? await publishTikTokReel(acc, payload, status)
+        : await publishInstagramReel(acc, payload, status);
       results.push({ acc, data });
 
       state.history.push({
@@ -463,8 +471,8 @@ async function publishReel() {
 
     saveHistory();
     status.className = 'publish-status success';
-    status.textContent = `✓ Publicado en ${results.length} cuenta(s)`;
-    toast('Reel publicado correctamente', 'success');
+    status.textContent = `✓ Publicación enviada a ${results.length} cuenta(s)`;
+    toast('Publicación enviada correctamente', 'success');
     setTimeout(() => { status.textContent = ''; }, 5000);
   } catch (error) {
     status.className = 'publish-status error';
@@ -556,8 +564,36 @@ async function uploadVideoToStorage(file, statusEl) {
   }
 
   if (!blob?.url) throw new Error('No se pudo obtener la URL pública del video.');
-  statusEl.textContent = 'Video subido. Preparando publicación en Instagram...';
+  statusEl.textContent = 'Video subido. Preparando publicación...';
   return blob.url;
+}
+
+async function publishTikTokReel(account, payload, statusEl) {
+  const grantedScopes = String(account.scope || '');
+  if (!grantedScopes.includes('video.publish')) {
+    throw new Error(`Reconectá ${account.username} con el permiso video.publish antes de publicar en TikTok.`);
+  }
+
+  statusEl.textContent = `Publicando automáticamente en ${account.username}...`;
+
+  const response = await fetch('/api/tiktok/publish', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      accessToken: account.token,
+      videoUrl: payload.videoUrl,
+      caption: payload.caption,
+      thumbOffset: payload.thumbOffset,
+      privacyLevel: payload.privacyLevel,
+    }),
+  });
+  const data = await response.json();
+
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'No se pudo publicar en TikTok.');
+  }
+
+  return data;
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -716,6 +752,7 @@ function renderHistory() {
 
   const statusMap = {
     published: '<span class="badge badge-active">Publicado</span>',
+    pending:   '<span class="badge badge-pending">En proceso</span>',
     draft:     '<span class="badge badge-pending">Borrador</span>',
     ready:     '<span class="badge badge-active">Listo</span>',
     error:     '<span class="badge badge-error">Error</span>',

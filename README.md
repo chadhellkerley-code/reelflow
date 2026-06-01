@@ -89,6 +89,20 @@ La ruta `api/tiktok/exchange.js` cambia el `code` OAuth de TikTok por tokens:
 /api/tiktok/exchange
 ```
 
+La ruta `api/tiktok/publish.js` publica con TikTok Direct Post usando una URL pública de video:
+
+```
+/api/tiktok/publish
+```
+
+Para Direct Post, el OAuth de TikTok debe pedir el scope:
+
+```env
+user.info.basic,video.publish
+```
+
+Si se usa `PULL_FROM_URL`, TikTok puede exigir verificar el dominio público del video en el portal de Developers.
+
 La ruta `api/blob/upload.js` habilita uploads directos de video a Vercel Blob:
 
 ```
