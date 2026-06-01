@@ -445,20 +445,7 @@ async function publishReel() {
     }
 
     for (const acc of accounts) {
-      status.textContent = `Publicando en ${acc.username}...`;
-      const response = await fetch('/api/instagram/publish', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          igUserId: acc.igUserId || acc.id,
-          accessToken: acc.token,
-          videoUrl,
-          caption,
-          thumbOffset,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo publicar el Reel.');
+      const data = await publishInstagramReel(acc, { videoUrl, caption, thumbOffset }, status);
       results.push({ acc, data });
 
       state.history.push({
@@ -485,6 +472,44 @@ async function publishReel() {
     btn.disabled = false;
     btn.innerHTML = '<span>◆</span> Publicar Reel';
   }
+}
+
+async function publishInstagramReel(account, payload, statusEl) {
+  let containerId = null;
+
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
+    statusEl.textContent = containerId
+      ? `Instagram sigue procesando el video... intento ${attempt}/6`
+      : `Creando publicación en ${account.username}...`;
+
+    const response = await fetch('/api/instagram/publish', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        igUserId: account.igUserId || account.id,
+        accessToken: account.token,
+        videoUrl: payload.videoUrl,
+        caption: payload.caption,
+        thumbOffset: payload.thumbOffset,
+        containerId,
+      }),
+    });
+    const data = await response.json();
+
+    if (response.status === 202 && data.pending && data.containerId) {
+      containerId = data.containerId;
+      await sleep(10000);
+      continue;
+    }
+
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || 'No se pudo publicar el Reel.');
+    }
+
+    return data;
+  }
+
+  throw new Error('Instagram sigue procesando el video. Probá publicar otra vez en unos minutos.');
 }
 
 async function uploadVideoToStorage(file, statusEl) {
