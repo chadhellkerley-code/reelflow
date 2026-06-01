@@ -176,7 +176,7 @@ const pages = {
   dashboard: 'Dashboard',
   accounts:  'Cuentas',
   publisher: 'Publicar',
-  editor:    'Editor de Formatos',
+  editor:    'Editor de Videos',
   history:   'Historial',
   settings:  'Configuración',
 };
@@ -310,7 +310,7 @@ function renderDashboard() {
     activity.innerHTML = state.history.slice(-5).reverse().map(h => `
       <div class="activity-item">
         <div class="activity-icon">${h.platform === 'ig' ? '▶' : '◆'}</div>
-        <div class="activity-text">${h.type === 'format' ? 'Formatos generados' : 'Reel publicado'} · ${h.account || ''}</div>
+        <div class="activity-text">${h.type === 'format' ? 'Ediciones generadas' : 'Reel publicado'} · ${h.account || ''}</div>
         <div class="activity-time">${formatDate(h.date)}</div>
       </div>
     `).join('');
@@ -793,6 +793,33 @@ function ffmpegOutputArgs(output) {
   ];
 }
 
+function ffmpegRenderArgs(output, audioMap = '0:a?') {
+  const args = [
+    '-map', '[v]',
+  ];
+
+  if (audioMap) {
+    args.push(
+      '-map', audioMap,
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-shortest',
+    );
+  } else {
+    args.push('-an');
+  }
+
+  return [
+    ...args,
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-crf', '28',
+    '-pix_fmt', 'yuv420p',
+    '-movflags', 'faststart',
+    output,
+  ];
+}
+
 function ffmpegVideoFilterCommand(input, output, filter) {
   return [
     '-i', input,
@@ -817,6 +844,203 @@ function initEditor() {
 function getReferenceTemplate(ref, index = 0) {
   const key = ref?.templateKey || LOCAL_VIDEO_TEMPLATES[index % LOCAL_VIDEO_TEMPLATES.length].key;
   return getTemplateByKey(key) || LOCAL_VIDEO_TEMPLATES[0];
+}
+
+function getReferenceEditProfile(template, referenceMeta = {}, index = 0) {
+  const duration = Number(referenceMeta.duration || 0);
+  const fastReference = duration > 0 && duration < 12;
+  const mediumReference = duration >= 12 && duration < 25;
+  const cadence = fastReference ? 1.05 : mediumReference ? 1.45 : 1.85;
+  const driftX = 14 + (index % 4) * 4;
+  const driftY = 8 + (index % 3) * 3;
+
+  const profileByKey = {
+    'blur-bg': {
+      name: 'recortes + fondo blur + movimiento',
+      filter: `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=4:1,eq=contrast=1.08:saturation=1.12,unsharp=5:5:0.7:5:5:0`,
+    },
+    'black-white': {
+      name: 'recortes + blanco y negro + punch',
+      filter: `scale=810:1440:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.8}),format=gray,eq=contrast=1.18,unsharp=5:5:0.8:5:5:0`,
+    },
+    'punchy-color': {
+      name: 'recortes + color viral + punch',
+      filter: `scale=828:1472:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.7}),eq=contrast=1.2:saturation=1.25,unsharp=5:5:1.0:5:5:0`,
+    },
+    warm: {
+      name: 'recortes + look cálido + cámara suave',
+      filter: `scale=800:1422:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence + 0.4}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 1}),eq=saturation=1.15:gamma_r=1.08:contrast=1.08`,
+    },
+    'fade-in': {
+      name: 'recortes + entrada animada',
+      filter: `scale=810:1440:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2,fade=t=in:st=0:d=0.35,eq=contrast=1.1:saturation=1.08`,
+    },
+    'zoom-punch': {
+      name: 'recortes + zoom punch',
+      filter: `scale=864:1536:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.6}),eq=contrast=1.14:saturation=1.14,unsharp=5:5:1.0:5:5:0`,
+    },
+  };
+
+  return profileByKey[template.key] || {
+    name: 'recortes + cámara dinámica',
+    filter: `scale=810:1440:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.9}),eq=contrast=1.1:saturation=1.12,unsharp=5:5:0.7:5:5:0`,
+  };
+}
+
+async function runFFmpegWithLogs(ffmpeg, task) {
+  const logs = [];
+  const onLog = ({ message }) => {
+    if (message) logs.push(message);
+  };
+
+  ffmpeg.on('log', onLog);
+  try {
+    await task();
+  } finally {
+    ffmpeg.off('log', onLog);
+  }
+
+  return logs.join('\n');
+}
+
+async function execFFmpegChecked(ffmpeg, args, errorMessage = 'FFmpeg no pudo completar la edición.') {
+  const result = await ffmpeg.exec(args);
+  if (result !== 0) throw new Error(errorMessage);
+  return result;
+}
+
+async function probeDuration(ffmpeg, inputName, outputName) {
+  await ffmpeg.ffprobe([
+    '-v', 'error',
+    '-show_entries', 'format=duration',
+    '-of', 'default=noprint_wrappers=1:nokey=1',
+    inputName,
+    '-o', outputName,
+  ]);
+
+  const text = await ffmpeg.readFile(outputName, 'utf8');
+  await ffmpeg.deleteFile(outputName).catch(() => {});
+  const duration = Number.parseFloat(String(text).trim());
+  return Number.isFinite(duration) ? duration : 0;
+}
+
+async function probeHasAudio(ffmpeg, inputName, outputName) {
+  await ffmpeg.ffprobe([
+    '-v', 'error',
+    '-select_streams', 'a',
+    '-show_entries', 'stream=codec_type',
+    '-of', 'csv=p=0',
+    inputName,
+    '-o', outputName,
+  ]);
+
+  const text = await ffmpeg.readFile(outputName, 'utf8').catch(() => '');
+  await ffmpeg.deleteFile(outputName).catch(() => {});
+  return String(text).includes('audio');
+}
+
+function parseSilenceIntervals(logText) {
+  const intervals = [];
+  let currentStart = null;
+
+  String(logText).split('\n').forEach(line => {
+    const startMatch = line.match(/silence_start:\s*([0-9.]+)/);
+    if (startMatch) {
+      currentStart = Number.parseFloat(startMatch[1]);
+      return;
+    }
+
+    const endMatch = line.match(/silence_end:\s*([0-9.]+)\s*\|\s*silence_duration:\s*([0-9.]+)/);
+    if (!endMatch || currentStart === null) return;
+
+    const end = Number.parseFloat(endMatch[1]);
+    const duration = Number.parseFloat(endMatch[2]);
+    if (Number.isFinite(currentStart) && Number.isFinite(end) && Number.isFinite(duration)) {
+      intervals.push({ start: currentStart, end, duration });
+    }
+    currentStart = null;
+  });
+
+  return intervals;
+}
+
+async function detectSilences(ffmpeg, inputName, hasAudio) {
+  if (!hasAudio) return [];
+
+  const logText = await runFFmpegWithLogs(ffmpeg, () => execFFmpegChecked(ffmpeg, [
+    '-i', inputName,
+    '-af', 'silencedetect=noise=-36dB:d=0.35',
+    '-f', 'null',
+    '-',
+  ], 'No se pudo analizar el audio del video.'));
+
+  return parseSilenceIntervals(logText);
+}
+
+function buildKeepSegments(silences, duration) {
+  if (!duration) return [];
+
+  const relevantSilences = silences
+    .filter(item => item.duration >= 0.5 && item.end > item.start)
+    .sort((a, b) => a.start - b.start);
+
+  if (relevantSilences.length === 0) return [{ start: 0, end: duration }];
+
+  const segments = [];
+  let cursor = 0;
+
+  relevantSilences.forEach(silence => {
+    const end = Math.max(cursor, Math.min(silence.start, duration));
+    if (end - cursor >= 0.25) segments.push({ start: cursor, end });
+    cursor = Math.max(cursor, Math.min(silence.end, duration));
+  });
+
+  if (duration - cursor >= 0.25) segments.push({ start: cursor, end: duration });
+
+  if (segments.length === 0 || segments.length > 60) return [{ start: 0, end: duration }];
+  return segments;
+}
+
+function formatSeconds(value) {
+  return Number(value || 0).toFixed(3);
+}
+
+function ffmpegSmartEditCommand(input, output, editPlan) {
+  const profile = editPlan.profile;
+  const segments = editPlan.segments || [];
+
+  if (!editPlan.hasAudio) {
+    return [
+      '-i', input,
+      '-filter_complex', `[0:v]${profile.filter}[v]`,
+      ...ffmpegRenderArgs(output, null),
+    ];
+  }
+
+  if (segments.length > 1) {
+    const chains = [];
+    const concatInputs = [];
+
+    segments.forEach((segment, index) => {
+      const start = formatSeconds(segment.start);
+      const end = formatSeconds(segment.end);
+      chains.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS,${profile.filter}[v${index}]`);
+      chains.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${index}]`);
+      concatInputs.push(`[v${index}][a${index}]`);
+    });
+
+    return [
+      '-i', input,
+      '-filter_complex', `${chains.join(';')};${concatInputs.join('')}concat=n=${segments.length}:v=1:a=1[v][a]`,
+      ...ffmpegRenderArgs(output, '[a]'),
+    ];
+  }
+
+  return [
+    '-i', input,
+    '-filter_complex', `[0:v]${profile.filter}[v];[0:a]anull[a]`,
+    ...ffmpegRenderArgs(output, '[a]'),
+  ];
 }
 
 function handleReferenceUpload(event) {
@@ -852,7 +1076,7 @@ function renderReferenceVideos() {
   if (!grid) return;
 
   if (state.referenceVideos.length === 0) {
-    grid.innerHTML = `<div class="empty-reference-state">Agregá videos de referencia para crear modelos de edición.</div>`;
+    grid.innerHTML = `<div class="empty-reference-state">Agregá videos de referencia para inspirar cortes, ritmo y estilo.</div>`;
     updateReferenceCount();
     return;
   }
@@ -1002,9 +1226,10 @@ function safeFilePart(value) {
   return String(value || 'video').replace(/\.[^.]+$/, '').replace(/[^a-z0-9._-]/gi, '-').slice(0, 80);
 }
 
-function renderPendingResult(reference, template, index) {
+function renderPendingResult(reference, template, index, profile, editStats) {
   const item = document.createElement('div');
   const id = `render_${Date.now()}_${index}`;
+  const removed = Math.max(0, (editStats?.silenceCount || 0));
   item.className = 'result-item generating-item';
   item.id = id;
   item.innerHTML = `
@@ -1012,7 +1237,8 @@ function renderPendingResult(reference, template, index) {
     <div class="result-info">
       <div class="result-name">Ref ${index + 1}: ${escapeHtml(reference.name)}</div>
       <div class="result-meta" id="${id}_status">En cola...</div>
-      <div class="result-meta">Receta local: ${escapeHtml(template.name)}</div>
+      <div class="result-meta">Edición: ${escapeHtml(profile.name)} · ${removed} silencio(s) detectado(s)</div>
+      <div class="result-meta">Referencia base: ${escapeHtml(template.name)}</div>
       <div class="result-actions" id="${id}_actions"></div>
     </div>
   `;
@@ -1057,6 +1283,17 @@ async function generateFormats() {
     statusEl.textContent = 'Cargando video en memoria local...';
     await ffmpeg.writeFile(inputName, await runtime.fetchFile(baseVideo));
 
+    statusEl.textContent = 'Analizando audio para recortar silencios...';
+    const baseDuration = await probeDuration(ffmpeg, inputName, 'base-duration.txt').catch(() => 0);
+    const hasAudio = await probeHasAudio(ffmpeg, inputName, 'base-audio.txt').catch(() => false);
+    const silences = await detectSilences(ffmpeg, inputName, hasAudio).catch(() => []);
+    const segments = buildKeepSegments(silences, baseDuration);
+    const editStats = {
+      hasAudio,
+      silenceCount: segments.length > 1 ? silences.filter(item => item.duration >= 0.5).length : 0,
+      segmentCount: segments.length,
+    };
+
     state.generatedVideos.forEach(video => URL.revokeObjectURL(video.url));
     state.generatedVideos = [];
     results.innerHTML = '';
@@ -1065,12 +1302,30 @@ async function generateFormats() {
       const reference = selectedReferences[i];
       const referenceIndex = state.referenceVideos.findIndex(ref => ref.id === reference.id);
       const template = getReferenceTemplate(reference, referenceIndex >= 0 ? referenceIndex : i);
-      const resultId = renderPendingResult(reference, template, i);
-      const outputName = `${safeFilePart(baseVideo.name)}-${safeFilePart(reference.name)}.mp4`;
-      state.ffmpeg.activeStatusId = `${resultId}_status`;
-      setRenderStatus(state.ffmpeg.activeStatusId, `Procesando referencia ${i + 1} de ${selectedReferences.length}...`);
+      const referenceInputName = `reference-${Date.now()}-${i}.${reference.name.split('.').pop() || 'mp4'}`;
+      let referenceMeta = {};
 
-      await ffmpeg.exec(template.command(inputName, outputName));
+      if (reference.file) {
+        await ffmpeg.writeFile(referenceInputName, await runtime.fetchFile(reference.file));
+        referenceMeta.duration = await probeDuration(ffmpeg, referenceInputName, `ref-duration-${i}.txt`).catch(() => 0);
+        await ffmpeg.deleteFile(referenceInputName).catch(() => {});
+      }
+
+      const profile = getReferenceEditProfile(template, referenceMeta, i);
+      const resultId = renderPendingResult(reference, template, i, profile, editStats);
+      const outputName = `${safeFilePart(baseVideo.name)}-${safeFilePart(reference.name)}-editado.mp4`;
+      state.ffmpeg.activeStatusId = `${resultId}_status`;
+      const cutLabel = editStats.segmentCount > 1
+        ? `recortando ${editStats.silenceCount} silencio(s)`
+        : 'aplicando ritmo visual';
+      setRenderStatus(state.ffmpeg.activeStatusId, `Editando referencia ${i + 1} de ${selectedReferences.length}: ${cutLabel}...`);
+
+      const command = ffmpegSmartEditCommand(inputName, outputName, {
+        profile,
+        hasAudio,
+        segments,
+      });
+      await execFFmpegChecked(ffmpeg, command);
       const data = await ffmpeg.readFile(outputName);
       const blob = new Blob([data], { type: 'video/mp4' });
       const generated = {
@@ -1090,6 +1345,8 @@ async function generateFormats() {
         template: template.key,
         filename: baseVideo.name,
         referenceFilename: reference.name,
+        editProfile: profile.name,
+        silenceCuts: editStats.silenceCount,
         status: 'ready',
         date: new Date().toISOString(),
       });
@@ -1109,7 +1366,7 @@ async function generateFormats() {
     toast(message, 'error');
   } finally {
     btn.disabled = false;
-    btn.innerHTML = `<span>◧</span> Generar <span id="gen-count">${state.selectedReferences.size}</span> modelo(s)`;
+    btn.innerHTML = `<span>◧</span> Generar <span id="gen-count">${state.selectedReferences.size}</span> edición(es)`;
   }
 }
 
@@ -1140,7 +1397,7 @@ function renderHistory() {
   };
   const typeMap = {
     publish: 'Reel',
-    format:  'Formato',
+    format:  'Edición',
   };
 
   tbody.innerHTML = items.slice().reverse().map(h => `
