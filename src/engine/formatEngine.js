@@ -1,0 +1,38 @@
+import { transcribeVideo } from './transcriber.js';
+import { analyzeTranscript } from './analyzer.js';
+import { generatePlans, selectFormats } from './formatSelector.js';
+import { renderFormatQueue } from './ffmpegRunner.js';
+
+// Runs transcription, analysis, format selection, and plan generation.
+export async function analyzeAndPlan(videoFile, options = {}) {
+  options.onProgress?.({ step: 'start', message: 'Iniciando analisis del video...' });
+  const transcription = await transcribeVideo(videoFile, options);
+  const analysis = await analyzeTranscript(transcription, options);
+  const selectedFormats = selectFormats(analysis, options);
+  const plans = generatePlans(analysis, { ...options, formats: selectedFormats });
+
+  return {
+    transcription,
+    analysis,
+    selectedFormats,
+    plans,
+  };
+}
+
+// Runs the full automatic engine and optionally renders every generated format with FFmpeg.wasm.
+export async function runFormatEngine(videoFile, options = {}) {
+  const result = await analyzeAndPlan(videoFile, options);
+
+  if (!options.render) {
+    return { ...result, renders: [] };
+  }
+
+  const renders = await renderFormatQueue(videoFile, result.plans, options);
+  return { ...result, renders };
+}
+
+export { transcribeVideo } from './transcriber.js';
+export { analyzeTranscript } from './analyzer.js';
+export { generatePlans, selectFormats } from './formatSelector.js';
+export { renderFormatQueue } from './ffmpegRunner.js';
+

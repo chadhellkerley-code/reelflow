@@ -520,7 +520,7 @@
                   </div>
                 </div>
                 <div class="ai-editor-note" id="gemini-editor-note">
-                  Gemini Omni se activa desde Configuración. Si no hay API key, ReelFlow usa el análisis local.
+                  Gemini se activa desde Configuración. Si no hay API key, ReelFlow usa el análisis local.
                 </div>
                 <button class="btn btn-primary btn-lg btn-full" id="generate-btn" onclick="generateFormats()">
                   <span>◧</span> Generar <span id="gen-count">0</span> formato(s)
@@ -609,7 +609,7 @@
             </div>
 
             <div class="card">
-              <div class="card-title">Gemini Omni</div>
+              <div class="card-title">Gemini</div>
               <div class="form-group">
                 <label>Gemini API Key</label>
                 <input type="password" class="form-input" id="gemini-api-key" placeholder="Pegá tu API key de Google AI Studio" autocomplete="off" />
@@ -620,7 +620,7 @@
               </div>
               <div class="form-group">
                 <label>Modelo de análisis</label>
-                <input type="text" class="form-input" id="gemini-model" value="gemini-2.5-flash" placeholder="gemini-2.5-flash" />
+                <input type="text" class="form-input" id="gemini-model" value="gemini-1.5-pro" placeholder="gemini-1.5-pro" />
                 <div class="form-hint">Gemini analiza el video y FFmpeg renderiza la edición en tu navegador.</div>
               </div>
               <button class="btn btn-primary btn-sm" onclick="saveSettings()">Guardar Gemini</button>

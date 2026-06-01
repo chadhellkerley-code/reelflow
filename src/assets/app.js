@@ -32,7 +32,7 @@ const state = {
 state.settings = {
   backendUrl: 'http://localhost:4000',
   geminiApiKey: '',
-  geminiModel: 'gemini-2.5-flash',
+  geminiModel: 'gemini-1.5-pro',
   ...state.settings,
 };
 
@@ -372,8 +372,9 @@ function saveHistory() {
 function saveSettings() {
   state.settings.backendUrl = document.getElementById('backend-url')?.value?.trim() || 'http://localhost:4000';
   state.settings.geminiApiKey = document.getElementById('gemini-api-key')?.value?.trim() || '';
-  state.settings.geminiModel = document.getElementById('gemini-model')?.value?.trim() || 'gemini-2.5-flash';
+  state.settings.geminiModel = document.getElementById('gemini-model')?.value?.trim() || 'gemini-1.5-pro';
   localStorage.setItem('rf_settings', JSON.stringify(state.settings));
+  syncGeminiGlobals();
   updateEditorEngineStatus();
   toast('Configuración guardada', 'success');
 }
@@ -1306,14 +1307,14 @@ function updateEditorEngineStatus() {
 
   if (engine) {
     engine.value = hasGemini
-      ? `Gemini Omni + FFmpeg.wasm (${state.settings.geminiModel || 'gemini-2.5-flash'})`
+      ? `Gemini + FFmpeg.wasm (${state.settings.geminiModel || 'gemini-1.5-pro'})`
       : 'FFmpeg.wasm local';
   }
 
   if (note) {
     note.textContent = hasGemini
-      ? 'Gemini Omni va a analizar el video base y cada ejemplar antes de renderizar localmente.'
-      : 'Gemini Omni se activa desde Configuración. Si no hay API key, ReelFlow usa el análisis local.';
+      ? 'Gemini analiza transcripcion, estructura y formatos automaticos antes de renderizar localmente.'
+      : 'Gemini se activa desde Configuración. Si no hay API key, ReelFlow usa el análisis local.';
   }
 }
 
@@ -1626,11 +1627,16 @@ function getGeminiApiKey() {
 }
 
 function getGeminiModel() {
-  return String(state.settings.geminiModel || 'gemini-2.5-flash').trim();
+  return String(state.settings.geminiModel || 'gemini-1.5-pro').trim();
 }
 
 function isGeminiEnabled() {
   return Boolean(getGeminiApiKey());
+}
+
+function syncGeminiGlobals() {
+  window.GEMINI_API_KEY = getGeminiApiKey();
+  window.GEMINI_MODEL = getGeminiModel();
 }
 
 function readFileAsBase64(file) {
@@ -2312,6 +2318,98 @@ function renderCompletedResult(resultId, generated) {
   }
 }
 
+function renderAutomaticPendingResult(plan, index, total) {
+  const item = document.createElement('div');
+  const id = `auto_render_${Date.now()}_${index}`;
+  item.className = 'result-item generating-item';
+  item.id = id;
+  item.innerHTML = `
+    <div class="result-thumb">◧</div>
+    <div class="result-info">
+      <div class="result-name">${index + 1}. ${escapeHtml(plan.format.replaceAll('_', ' '))}</div>
+      <div class="result-meta" id="${id}_status">Formato ${index + 1} de ${total} en cola...</div>
+      <div class="result-meta">Plan IA: ${plan.timeline.length} acciones · ${Number(plan.duration || 0).toFixed(1)}s</div>
+      <div class="result-actions" id="${id}_actions"></div>
+    </div>
+  `;
+  document.getElementById('generated-results').appendChild(item);
+  return id;
+}
+
+async function generateAutomaticFormats() {
+  const btn = document.getElementById('generate-btn');
+  const results = document.getElementById('generated-results');
+  const statusEl = document.getElementById('editor-render-status');
+  const baseVideo = state.editorVideos[0];
+  const resultIds = new Map();
+
+  syncGeminiGlobals();
+  const runtime = await loadFFmpeg(statusEl);
+  const { runFormatEngine } = await import('/src/engine/formatEngine.js');
+
+  state.generatedVideos.forEach(video => URL.revokeObjectURL(video.url));
+  state.generatedVideos = [];
+  results.innerHTML = `<div class="render-status" id="editor-render-status">Analizando video con Gemini...</div>`;
+
+  const engineResult = await runFormatEngine(baseVideo, {
+    apiKey: getGeminiApiKey(),
+    model: getGeminiModel(),
+    render: true,
+    maxFormats: Math.min(8, Math.max(1, state.selectedTemplates.size || 3)),
+    ffmpeg: runtime.instance,
+    fetchFile: runtime.fetchFile,
+    onProgress: event => {
+      if (event.message) {
+        const liveStatus = document.getElementById('editor-render-status');
+        if (liveStatus) liveStatus.textContent = event.message;
+      }
+      if (event.format && Number.isFinite(event.progress)) {
+        const id = resultIds.get(event.format);
+        if (id) setRenderStatus(`${id}_status`, `Procesando... ${event.progress}%`);
+      }
+    },
+    onFormatStart: ({ plan, index, total }) => {
+      if (document.getElementById('editor-render-status')) {
+        document.getElementById('editor-render-status').remove();
+      }
+      const id = renderAutomaticPendingResult(plan, index, total);
+      resultIds.set(plan.format, id);
+      setRenderStatus(`${id}_status`, 'Renderizando con FFmpeg.wasm...');
+    },
+    onComplete: result => {
+      const id = resultIds.get(result.format);
+      const generated = {
+        id: `gen_auto_${Date.now()}_${result.format}`,
+        template: result.format,
+        name: result.format.replaceAll('_', ' '),
+        referenceId: '',
+        url: result.url,
+        file: result.file,
+      };
+      state.generatedVideos.push(generated);
+      if (id) renderCompletedResult(id, generated);
+    },
+  });
+
+  engineResult.plans.forEach((plan, index) => {
+    state.history.push({
+      id: `fmt_auto_${Date.now()}_${index}`,
+      type: 'format',
+      template: plan.format,
+      filename: baseVideo.name,
+      referenceFilename: '',
+      editProfile: `Auto IA: ${engineResult.analysis.content_type}/${engineResult.analysis.engagement_trigger}`,
+      ai: getGeminiModel(),
+      status: 'ready',
+      date: new Date().toISOString(),
+    });
+  });
+
+  saveHistory();
+  btn.innerHTML = `<span>◧</span> Generar <span id="gen-count">${state.selectedTemplates.size}</span> formato(s)`;
+  toast(`${engineResult.renders.length} formato(s) automaticos generados`, 'success');
+}
+
 async function generateFormats() {
   if (state.editorVideos.length === 0) { toast('Subí tu video base', 'error'); return; }
   const selectedTemplates = getSelectedTemplates();
@@ -2327,6 +2425,20 @@ async function generateFormats() {
   const results = document.getElementById('generated-results');
   results.innerHTML = `<div class="render-status" id="editor-render-status">Preparando motor local...</div>`;
   const statusEl = document.getElementById('editor-render-status');
+
+  if (isGeminiEnabled()) {
+    try {
+      await generateAutomaticFormats();
+    } catch (error) {
+      const message = getErrorMessage(error, 'No se pudo ejecutar el motor automatico.');
+      results.innerHTML = `<div class="render-status error">${escapeHtml(message)}</div>`;
+      toast(message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<span>◧</span> Generar <span id="gen-count">${state.selectedTemplates.size}</span> formato(s)`;
+    }
+    return;
+  }
 
   try {
     const runtime = await loadFFmpeg(statusEl);
@@ -2527,7 +2639,7 @@ function renderSettings() {
   const geminiKeyInput = document.getElementById('gemini-api-key');
   const geminiModelInput = document.getElementById('gemini-model');
   if (geminiKeyInput) geminiKeyInput.value = state.settings.geminiApiKey || '';
-  if (geminiModelInput) geminiModelInput.value = state.settings.geminiModel || 'gemini-2.5-flash';
+  if (geminiModelInput) geminiModelInput.value = state.settings.geminiModel || 'gemini-1.5-pro';
   updateEditorEngineStatus();
 
   // Tokens list
@@ -2612,6 +2724,7 @@ function setupTikTokOAuthFields() {
 //  INIT
 // ═══════════════════════════════════════════════════════════
 function init() {
+  syncGeminiGlobals();
   setupInstagramOAuthFields();
   setupTikTokOAuthFields();
 
