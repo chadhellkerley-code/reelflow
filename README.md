@@ -95,6 +95,13 @@ Para usar uploads, el proyecto de Vercel necesita la variable:
 BLOB_READ_WRITE_TOKEN=
 ```
 
+Diagnostico rapido:
+
+```
+/api/blob/status
+/api/blob/test
+```
+
 ## Stack recomendado para el backend
 
 - **Runtime:** Node.js + Express
