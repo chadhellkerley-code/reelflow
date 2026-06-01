@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ReelFlow — Panel de Publicación</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="src/styles/variables.css" />
+  <link rel="stylesheet" href="src/styles/base.css" />
+  <link rel="stylesheet" href="src/styles/layout.css" />
+  <link rel="stylesheet" href="src/styles/components.css" />
+  <link rel="stylesheet" href="src/styles/pages.css" />
+  <link rel="stylesheet" href="src/styles/animations.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-mark">
+          <span class="logo-icon">▶</span>
+        </div>
+        <span class="logo-text">ReelFlow</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-page="dashboard">
+          <span class="nav-icon">◈</span>
+          <span class="nav-label">Dashboard</span>
+        </a>
+        <a href="#" class="nav-item" data-page="accounts">
+          <span class="nav-icon">◉</span>
+          <span class="nav-label">Cuentas</span>
+        </a>
+        <a href="#" class="nav-item" data-page="publisher">
+          <span class="nav-icon">◆</span>
+          <span class="nav-label">Publicar</span>
+        </a>
+        <a href="#" class="nav-item" data-page="editor">
+          <span class="nav-icon">◧</span>
+          <span class="nav-label">Editor</span>
+        </a>
+        <a href="#" class="nav-item" data-page="history">
+          <span class="nav-icon">◫</span>
+          <span class="nav-label">Historial</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="sidebar-status">
+          <span class="status-dot active"></span>
+          <span class="status-text">Sistema activo</span>
+        </div>
+        <a href="#" class="nav-item" data-page="settings">
+          <span class="nav-icon">⊙</span>
+          <span class="nav-label">Configuración</span>
+        </a>
+        <a href="privacidad.html" class="nav-item">
+          <span class="nav-icon">◌</span>
+          <span class="nav-label">Privacidad</span>
+        </a>
+        <a href="terminos.html" class="nav-item">
+          <span class="nav-icon">◌</span>
+          <span class="nav-label">Términos</span>
+        </a>
+        <a href="eliminacion-datos.html" class="nav-item">
+          <span class="nav-icon">◌</span>
+          <span class="nav-label">Eliminar datos</span>
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main-content" id="main-content">
+      <!-- Header -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="sidebar-toggle" id="sidebar-toggle">
+            <span></span><span></span><span></span>
+          </button>
+          <div class="breadcrumb" id="breadcrumb">Dashboard</div>
+        </div>
+        <div class="topbar-right">
+          <div class="connected-badges" id="connected-badges">
+            <!-- Se llena dinámicamente -->
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="navigateTo('publisher')">
+            + Publicar Reel
+          </button>
+        </div>
+      </header>
+
+      <!-- Pages -->
+      <div class="page-container">
+
+        <!-- ═══════════════════════════════════════ DASHBOARD ═══ -->
+        <section class="page active" id="page-dashboard">
+          <div class="page-header">
+            <h1 class="page-title">Bienvenido a ReelFlow</h1>
+            <p class="page-subtitle">Publicá, editá y gestioná tus reels desde un solo lugar.</p>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon ig-color">▶</div>
+              <div class="stat-info">
+                <div class="stat-number" id="stat-accounts">0</div>
+                <div class="stat-label">Cuentas conectadas</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">◆</div>
+              <div class="stat-info">
+                <div class="stat-number" id="stat-published">0</div>
+                <div class="stat-label">Reels publicados</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">◧</div>
+              <div class="stat-info">
+                <div class="stat-number" id="stat-formats">0</div>
+                <div class="stat-label">Formatos generados</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">◫</div>
+              <div class="stat-info">
+                <div class="stat-number" id="stat-drafts">0</div>
+                <div class="stat-label">Borradores</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dashboard-grid">
+            <div class="dash-card">
+              <div class="dash-card-header">
+                <h3>Cuentas conectadas</h3>
+                <button class="btn btn-ghost btn-sm" onclick="navigateTo('accounts')">Gestionar →</button>
+              </div>
+              <div class="accounts-preview" id="accounts-preview">
+                <div class="empty-state-small">
+                  <p>No hay cuentas conectadas aún.</p>
+                  <button class="btn btn-outline btn-sm" onclick="navigateTo('accounts')">Conectar cuenta</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="dash-card">
+              <div class="dash-card-header">
+                <h3>Actividad reciente</h3>
+              </div>
+              <div class="activity-list" id="activity-list">
+                <div class="empty-state-small">
+                  <p>No hay actividad reciente.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="quick-actions">
+            <h3>Acciones rápidas</h3>
+            <div class="quick-actions-grid">
+              <button class="quick-btn" onclick="navigateTo('accounts')">
+                <span class="quick-icon">◉</span>
+                <span class="quick-label">Agregar cuenta</span>
+              </button>
+              <button class="quick-btn" onclick="navigateTo('publisher')">
+                <span class="quick-icon">◆</span>
+                <span class="quick-label">Nuevo reel</span>
+              </button>
+              <button class="quick-btn" onclick="navigateTo('editor')">
+                <span class="quick-icon">◧</span>
+                <span class="quick-label">Generar formatos</span>
+              </button>
+              <button class="quick-btn" onclick="navigateTo('history')">
+                <span class="quick-icon">◫</span>
+                <span class="quick-label">Ver historial</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════ CUENTAS ═══ -->
+        <section class="page" id="page-accounts">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Cuentas</h1>
+              <p class="page-subtitle">Conectá y gestioná tus cuentas de Instagram y TikTok.</p>
+            </div>
+          </div>
+
+          <div class="connect-platforms">
+            <div class="platform-card" id="platform-instagram">
+              <div class="platform-header">
+                <div class="platform-logo ig-gradient">
+                  <svg viewBox="0 0 24 24" width="28" height="28" fill="white"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+                </div>
+                <div class="platform-info">
+                  <h3>Instagram</h3>
+                  <p>Graph API · Reels + Feed</p>
+                </div>
+                <div class="platform-status" id="ig-status">
+                  <span class="badge badge-inactive">Sin conectar</span>
+                </div>
+              </div>
+              <div class="platform-body">
+                <div class="credentials-form" id="ig-credentials">
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label>App ID</label>
+                      <input type="text" id="ig-app-id" value="1428803625601557" placeholder="Tu Instagram App ID" class="form-input" />
+                    </div>
+                    <div class="form-group">
+                      <label>Scopes</label>
+                      <input type="text" id="ig-scopes" value="instagram_business_basic,instagram_business_content_publish" class="form-input" readonly />
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Callback URL</label>
+                    <div class="input-with-copy">
+                      <input type="text" id="ig-callback" value="https://spring-mode-edfc.insta-licenses.workers.dev/auth/instagram/callback" class="form-input" readonly />
+                      <button class="btn-copy" onclick="copyToClipboard('ig-callback')">Copiar</button>
+                    </div>
+                  </div>
+                  <button class="btn btn-ig" onclick="connectInstagram()">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+                    Conectar con Instagram
+                  </button>
+                </div>
+                <div class="connected-accounts" id="ig-accounts-list"></div>
+              </div>
+            </div>
+
+            <div class="platform-card" id="platform-tiktok">
+              <div class="platform-header">
+                <div class="platform-logo tt-gradient">
+                  <svg viewBox="0 0 24 24" width="28" height="28" fill="white"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.79 1.53V6.78a4.85 4.85 0 01-1.02-.09z"/></svg>
+                </div>
+                <div class="platform-info">
+                  <h3>TikTok</h3>
+                  <p>Content Posting API · Videos</p>
+                </div>
+                <div class="platform-status" id="tt-status">
+                  <span class="badge badge-inactive">Sin conectar</span>
+                </div>
+              </div>
+              <div class="platform-body">
+                <div class="credentials-form" id="tt-credentials">
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label>Client Key</label>
+                      <input type="text" id="tt-client-key" placeholder="Tu TikTok Client Key" class="form-input" />
+                    </div>
+                    <div class="form-group">
+                      <label>Client Secret</label>
+                      <input type="password" id="tt-client-secret" placeholder="Tu Client Secret" class="form-input" />
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Callback URL</label>
+                    <div class="input-with-copy">
+                      <input type="text" id="tt-callback" value="https://tu-dominio.com/auth/tiktok/callback" class="form-input" readonly />
+                      <button class="btn-copy" onclick="copyToClipboard('tt-callback')">Copiar</button>
+                    </div>
+                  </div>
+                  <button class="btn btn-tt" onclick="connectTikTok()">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.79 1.53V6.78a4.85 4.85 0 01-1.02-.09z"/></svg>
+                    Conectar con TikTok
+                  </button>
+                </div>
+                <div class="connected-accounts" id="tt-accounts-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Token info banner -->
+          <div class="info-banner">
+            <span class="info-icon">ℹ</span>
+            <div>
+              <strong>Tokens de acceso</strong>
+              <p>Los tokens de Instagram tienen una validez de 60 días y se renuevan automáticamente. Los de TikTok se renuevan cada 24 horas con el refresh token.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════ PUBLICAR ═══ -->
+        <section class="page" id="page-publisher">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Publicar Reel</h1>
+              <p class="page-subtitle">Subí tu video y publicalo en tus cuentas conectadas.</p>
+            </div>
+          </div>
+
+          <div class="publisher-layout">
+            <div class="publisher-left">
+              <!-- Upload zone -->
+              <div class="card">
+                <div class="card-title">Video</div>
+                <div class="upload-zone" id="upload-zone" onclick="document.getElementById('video-input').click()">
+                  <div class="upload-icon">▶</div>
+                  <div class="upload-text">
+                    <strong>Arrastrá tu video aquí</strong>
+                    <span>o hacé clic para seleccionar</span>
+                    <span class="upload-hint">MP4, MOV · hasta 4GB · máx. 90 seg</span>
+                  </div>
+                  <input type="file" id="video-input" accept="video/*" hidden onchange="handleVideoUpload(event)" />
+                </div>
+                <div class="video-preview-container" id="video-preview-container" style="display:none">
+                  <video id="video-preview" controls class="video-preview"></video>
+                  <div class="video-info" id="video-info"></div>
+                  <button class="btn btn-ghost btn-sm" onclick="clearVideo()">✕ Quitar video</button>
+                </div>
+              </div>
+
+              <!-- Post details -->
+              <div class="card">
+                <div class="card-title">Detalles de la publicación</div>
+                <div class="form-group">
+                  <label>Caption / Descripción</label>
+                  <textarea class="form-input form-textarea" id="post-caption" placeholder="Escribí el texto para tu reel... #hashtags @menciones" rows="4"></textarea>
+                  <div class="char-count"><span id="caption-count">0</span>/2200</div>
+                </div>
+                <div class="form-group">
+                  <label>Tipo de publicación</label>
+                  <div class="radio-group">
+                    <label class="radio-item">
+                      <input type="radio" name="pub-type" value="reel" checked onchange="updatePubType(this.value)" />
+                      <span class="radio-custom"></span>
+                      <span>Reel (Feed)</span>
+                    </label>
+                    <label class="radio-item">
+                      <input type="radio" name="pub-type" value="draft" onchange="updatePubType(this.value)" />
+                      <span class="radio-custom"></span>
+                      <span>Prueba (Draft)</span>
+                    </label>
+                  </div>
+                </div>
+                <div class="form-group" id="cover-time-group">
+                  <label>Frame de portada (segundos)</label>
+                  <input type="number" class="form-input" id="cover-time" value="0" min="0" step="0.1" />
+                </div>
+              </div>
+            </div>
+
+            <div class="publisher-right">
+              <!-- Account selector -->
+              <div class="card">
+                <div class="card-title">Publicar en</div>
+                <div class="account-selector" id="account-selector">
+                  <div class="empty-state-small">
+                    <p>No hay cuentas conectadas.</p>
+                    <button class="btn btn-outline btn-sm" onclick="navigateTo('accounts')">Conectar cuenta →</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Publish schedule -->
+              <div class="card">
+                <div class="card-title">Programación</div>
+                <div class="schedule-options">
+                  <label class="radio-item">
+                    <input type="radio" name="schedule" value="now" checked onchange="updateSchedule(this.value)" />
+                    <span class="radio-custom"></span>
+                    <span>Publicar ahora</span>
+                  </label>
+                  <label class="radio-item">
+                    <input type="radio" name="schedule" value="later" onchange="updateSchedule(this.value)" />
+                    <span class="radio-custom"></span>
+                    <span>Programar para después</span>
+                  </label>
+                </div>
+                <div class="schedule-datetime" id="schedule-datetime" style="display:none">
+                  <input type="datetime-local" class="form-input" id="scheduled-at" />
+                </div>
+              </div>
+
+              <!-- Publish button -->
+              <button class="btn btn-primary btn-full btn-lg" id="publish-btn" onclick="publishReel()">
+                <span>◆</span> Publicar Reel
+              </button>
+              <div class="publish-status" id="publish-status"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════ EDITOR ═══ -->
+        <section class="page" id="page-editor">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Editor de Formatos</h1>
+              <p class="page-subtitle">Subí tu video y generá hasta 15 variantes virales automáticamente.</p>
+            </div>
+          </div>
+
+          <div class="editor-layout">
+            <!-- Step 1: Upload -->
+            <div class="editor-step" id="editor-step-1">
+              <div class="step-header">
+                <div class="step-number">01</div>
+                <div>
+                  <h3>Subir video(s)</h3>
+                  <p>Podés subir uno o varios videos como material base.</p>
+                </div>
+              </div>
+              <div class="upload-zone upload-zone-editor" id="editor-upload-zone" onclick="document.getElementById('editor-video-input').click()">
+                <div class="upload-icon">◧</div>
+                <div class="upload-text">
+                  <strong>Arrastrá tus videos aquí</strong>
+                  <span>o hacé clic para seleccionar</span>
+                  <span class="upload-hint">Podés subir múltiples archivos</span>
+                </div>
+                <input type="file" id="editor-video-input" accept="video/*" multiple hidden onchange="handleEditorUpload(event)" />
+              </div>
+              <div class="editor-videos-list" id="editor-videos-list"></div>
+            </div>
+
+            <!-- Step 2: Select templates -->
+            <div class="editor-step" id="editor-step-2">
+              <div class="step-header">
+                <div class="step-number">02</div>
+                <div>
+                  <h3>Elegí los formatos</h3>
+                  <p>Seleccioná los templates virales que querés generar.</p>
+                </div>
+                <div class="step-actions">
+                  <button class="btn btn-ghost btn-sm" onclick="selectAllTemplates()">Seleccionar todos</button>
+                  <button class="btn btn-ghost btn-sm" onclick="clearTemplates()">Limpiar</button>
+                </div>
+              </div>
+
+              <div class="templates-grid">
+                <div class="template-card selected" data-template="hook-reveal" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-hook">
+                      <div class="mock-text-top">TEXTO GANCHO</div>
+                      <div class="mock-cut">✂</div>
+                      <div class="mock-reveal">REVEAL</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Hook + Reveal</div>
+                    <div class="template-desc">Texto grande al inicio, corte abrupto y revelación</div>
+                    <div class="template-tags"><span class="tag">Trending</span><span class="tag">9:16</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="kinetic-subs" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-kinetic">
+                      <div class="mock-word mock-w1">UNA</div>
+                      <div class="mock-word mock-w2">PALABRA</div>
+                      <div class="mock-word mock-w3">A LA VEZ</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Subtítulos Cinéticos</div>
+                    <div class="template-desc">Palabras que aparecen al ritmo del audio</div>
+                    <div class="template-tags"><span class="tag">Viral</span><span class="tag">9:16</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="split-screen" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-split">
+                      <div class="mock-top-half">VIDEO</div>
+                      <div class="mock-bottom-half">TEXTO / SUBTÍTULOS</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Split Screen</div>
+                    <div class="template-desc">Video arriba, texto o subtítulos abajo</div>
+                    <div class="template-tags"><span class="tag">Trending</span><span class="tag">9:16</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="minimal-text" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-minimal">
+                      <div class="mock-minimal-text">texto<br/>minimalista.</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Texto Minimalista</div>
+                    <div class="template-desc">Tipografía limpia superpuesta sobre video</div>
+                    <div class="template-tags"><span class="tag">Estético</span><span class="tag">9:16</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="before-after" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-before-after">
+                      <div class="mock-before">ANTES</div>
+                      <div class="mock-divider">|</div>
+                      <div class="mock-after">DESPUÉS</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Before / After</div>
+                    <div class="template-desc">Transición con wipe o glitch entre dos estados</div>
+                    <div class="template-tags"><span class="tag">Engagement</span><span class="tag">9:16</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="slideshow" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-slideshow">
+                      <div class="mock-slide mock-s1">▶</div>
+                      <div class="mock-slide mock-s2">▶</div>
+                      <div class="mock-slide mock-s3">▶</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Slideshow Viral</div>
+                    <div class="template-desc">Imágenes/clips con zoom automático y música</div>
+                    <div class="template-tags"><span class="tag">Viral</span><span class="tag">9:16</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="countdown" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-countdown">
+                      <div class="mock-count">3</div>
+                      <div class="mock-count-label">cosas que...</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Countdown / Lista</div>
+                    <div class="template-desc">Cuenta regresiva animada con ítems</div>
+                    <div class="template-tags"><span class="tag">Retención</span><span class="tag">9:16</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="zoom-text" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-zoom">
+                      <div class="mock-zoom-text">WOW</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Zoom + Texto Bold</div>
+                    <div class="template-desc">Texto gigante con zoom dinámico en momentos clave</div>
+                    <div class="template-tags"><span class="tag">Impacto</span><span class="tag">9:16</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="duet-style" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-duet">
+                      <div class="mock-duet-left">ORIGINAL</div>
+                      <div class="mock-duet-right">REACCIÓN</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Estilo Duet</div>
+                    <div class="template-desc">Dos videos lado a lado estilo reacción</div>
+                    <div class="template-tags"><span class="tag">TikTok</span><span class="tag">9:16</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="trending-font" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-trending">
+                      <div class="mock-tf-text">POV:</div>
+                      <div class="mock-tf-sub">cuando esto pasa</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">POV / Trending Font</div>
+                    <div class="template-desc">Formato "POV:" con tipografías que trendan</div>
+                    <div class="template-tags"><span class="tag">Viral</span><span class="tag">9:16</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="glitch-transition" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-glitch">
+                      <div class="mock-glitch-text">GL!TCH</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Glitch Transition</div>
+                    <div class="template-desc">Transiciones de glitch y distorsión entre clips</div>
+                    <div class="template-tags"><span class="tag">Estético</span><span class="tag">9:16</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="square-format" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-square">
+                      <div class="mock-square-inner">1:1</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Formato Cuadrado</div>
+                    <div class="template-desc">Video recortado a 1:1 con márgenes y texto</div>
+                    <div class="template-tags"><span class="tag">Instagram</span><span class="tag">1:1</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="landscape" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-landscape">
+                      <div class="mock-landscape-text">16:9</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Formato Landscape</div>
+                    <div class="template-desc">Versión horizontal para YouTube / Twitter</div>
+                    <div class="template-tags"><span class="tag">YouTube</span><span class="tag">16:9</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="text-overlay-gradient" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-gradient-overlay">
+                      <div class="mock-grad-text">Tu mensaje aquí</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Overlay Gradiente</div>
+                    <div class="template-desc">Degradado oscuro al pie con texto destacado</div>
+                    <div class="template-tags"><span class="tag">Elegante</span><span class="tag">9:16</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+
+                <div class="template-card" data-template="story-style" onclick="toggleTemplate(this)">
+                  <div class="template-preview">
+                    <div class="template-mock mock-story">
+                      <div class="mock-story-bar"></div>
+                      <div class="mock-story-icon">◉</div>
+                      <div class="mock-story-text">@usuario</div>
+                    </div>
+                  </div>
+                  <div class="template-info">
+                    <div class="template-name">Estilo Story</div>
+                    <div class="template-desc">Barra de progreso y marca de usuario en pantalla</div>
+                    <div class="template-tags"><span class="tag">Stories</span><span class="tag">9:16</span></div>
+                  </div>
+                  <div class="template-check">✓</div>
+                </div>
+              </div>
+
+              <div class="templates-footer">
+                <div class="selected-count"><span id="selected-templates-count">1</span> de 15 formatos seleccionados</div>
+              </div>
+            </div>
+
+            <!-- Step 3: Customize & Generate -->
+            <div class="editor-step" id="editor-step-3">
+              <div class="step-header">
+                <div class="step-number">03</div>
+                <div>
+                  <h3>Personalizar y generar</h3>
+                  <p>Configurá los textos globales y generá todos los formatos.</p>
+                </div>
+              </div>
+              <div class="editor-config">
+                <div class="config-grid">
+                  <div class="form-group">
+                    <label>Texto principal (Hook)</label>
+                    <input type="text" class="form-input" id="global-hook" placeholder="Ej: No vas a creer esto..." />
+                  </div>
+                  <div class="form-group">
+                    <label>Texto secundario</label>
+                    <input type="text" class="form-input" id="global-sub" placeholder="Ej: Seguime para más..." />
+                  </div>
+                  <div class="form-group">
+                    <label>Nombre de usuario</label>
+                    <input type="text" class="form-input" id="global-username" placeholder="@tuusuario" />
+                  </div>
+                  <div class="form-group">
+                    <label>Fuente de Creatomate API Key</label>
+                    <input type="password" class="form-input" id="creatomate-key" placeholder="Tu Creatomate API Key" />
+                  </div>
+                </div>
+                <button class="btn btn-primary btn-lg btn-full" id="generate-btn" onclick="generateFormats()">
+                  <span>◧</span> Generar <span id="gen-count">1</span> formato(s)
+                </button>
+              </div>
+            </div>
+
+            <!-- Step 4: Results -->
+            <div class="editor-step" id="editor-step-4" style="display:none">
+              <div class="step-header">
+                <div class="step-number">04</div>
+                <div>
+                  <h3>Resultados</h3>
+                  <p>Tus formatos generados listos para descargar o publicar.</p>
+                </div>
+              </div>
+              <div class="generated-results" id="generated-results"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════ HISTORIAL ═══ -->
+        <section class="page" id="page-history">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Historial</h1>
+              <p class="page-subtitle">Todas tus publicaciones y formatos generados.</p>
+            </div>
+            <div class="page-header-actions">
+              <select class="form-input select-sm" id="history-filter">
+                <option value="all">Todo</option>
+                <option value="instagram">Instagram</option>
+                <option value="tiktok">TikTok</option>
+                <option value="draft">Borradores</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="history-table-wrapper">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>Video</th>
+                  <th>Plataforma</th>
+                  <th>Tipo</th>
+                  <th>Estado</th>
+                  <th>Fecha</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="history-tbody">
+                <tr class="empty-row">
+                  <td colspan="6">
+                    <div class="empty-state-small">
+                      <p>No hay publicaciones aún.</p>
+                      <button class="btn btn-outline btn-sm" onclick="navigateTo('publisher')">Crear primera publicación →</button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ═══════════════════════════════════════ SETTINGS ═══ -->
+        <section class="page" id="page-settings">
+          <div class="page-header">
+            <div>
+              <h1 class="page-title">Configuración</h1>
+              <p class="page-subtitle">Variables de entorno y preferencias del sistema.</p>
+            </div>
+          </div>
+
+          <div class="settings-grid">
+            <div class="card">
+              <div class="card-title">Backend / API</div>
+              <div class="form-group">
+                <label>URL del Backend</label>
+                <input type="text" class="form-input" id="backend-url" value="http://localhost:4000" placeholder="http://localhost:4000" />
+              </div>
+              <div class="form-group">
+                <label>Creatomate API Key</label>
+                <input type="password" class="form-input" id="settings-creatomate" placeholder="cm_live_..." />
+              </div>
+              <button class="btn btn-primary btn-sm" onclick="saveSettings()">Guardar</button>
+            </div>
+
+            <div class="card">
+              <div class="card-title">Tokens activos</div>
+              <div class="tokens-list" id="tokens-list">
+                <div class="empty-state-small"><p>No hay tokens guardados.</p></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-title">Información del sistema</div>
+              <div class="sys-info">
+                <div class="sys-row"><span>Versión</span><span>ReelFlow v1.0.0</span></div>
+                <div class="sys-row"><span>Backend</span><span class="badge badge-pending" id="backend-status">Verificando...</span></div>
+                <div class="sys-row"><span>Creatomate</span><span class="badge badge-pending" id="creatomate-status">No configurado</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Toast notifications -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="modal-overlay" onclick="closeModal()">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h3 id="modal-title">Modal</h3>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="src/assets/app.js"></script>
+</body>
+</html>

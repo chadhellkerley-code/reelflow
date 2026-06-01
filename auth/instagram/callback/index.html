@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Callback de Instagram | ReelFlow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../../src/styles/variables.css" />
+  <link rel="stylesheet" href="../../../src/styles/base.css" />
+  <link rel="stylesheet" href="../../../src/styles/legal.css" />
+</head>
+<body>
+  <main class="legal-shell">
+    <header class="legal-header">
+      <a class="legal-brand" href="../../../index.html">
+        <span class="legal-brand-mark">▶</span>
+        <span class="legal-brand-text">ReelFlow</span>
+      </a>
+      <a class="legal-back" href="../../../index.html">Volver a la app</a>
+    </header>
+
+    <article class="legal-document">
+      <div class="legal-kicker">Instagram OAuth</div>
+      <h1>Callback de Instagram</h1>
+      <p class="legal-updated">Resultado de la autorizacion de Meta</p>
+
+      <div id="callback-result">
+        <p>Procesando respuesta de Instagram...</p>
+      </div>
+
+      <div class="legal-note">
+        <p>Este callback confirma que Meta devuelve el codigo OAuth y llama al backend seguro para cambiarlo por un token.</p>
+      </div>
+    </article>
+  </main>
+
+  <script>
+    const result = document.getElementById('callback-result');
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    const error = params.get('error');
+    const errorReason = params.get('error_reason');
+    const errorDescription = params.get('error_description');
+    const expectedState = localStorage.getItem('rf_ig_oauth_state');
+    const appId = localStorage.getItem('rf_ig_app_id') || '';
+    const callbackUrl = localStorage.getItem('rf_ig_callback_url') || window.location.origin + '/auth/instagram/callback';
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      }[char]));
+    }
+
+    function copyValue(id) {
+      const input = document.getElementById(id);
+      navigator.clipboard.writeText(input.value);
+    }
+
+    function saveConnectedAccount(account) {
+      const accounts = JSON.parse(localStorage.getItem('rf_accounts') || '[]');
+      const expiresAt = account.expiresIn
+        ? new Date(Date.now() + Number(account.expiresIn) * 1000).toISOString()
+        : null;
+      const storedAccount = {
+        id: account.id ? `ig_${account.id}` : `ig_${Date.now()}`,
+        platform: 'ig',
+        username: account.username && account.username.startsWith('@') ? account.username : `@${account.username || 'instagram'}`,
+        token: account.accessToken,
+        accountType: account.accountType,
+        expiresAt,
+        connectedAt: account.connectedAt || new Date().toISOString(),
+      };
+      const nextAccounts = accounts.filter(item => item.id !== storedAccount.id && item.username !== storedAccount.username);
+      nextAccounts.push(storedAccount);
+      localStorage.setItem('rf_accounts', JSON.stringify(nextAccounts));
+    }
+
+    async function exchangeCode() {
+      result.innerHTML = `
+        <h2>Instagram devolvio el codigo</h2>
+        <p>El redirect funciona. Estamos cambiando el codigo por un token desde el backend seguro...</p>
+      `;
+
+      const response = await fetch('/api/instagram/exchange', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code, redirectUri: callbackUrl })
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'No se pudo cambiar el codigo por token.');
+      }
+
+      saveConnectedAccount(data.account);
+      result.innerHTML = `
+        <h2>Cuenta conectada</h2>
+        <p>Instagram quedo conectado en ReelFlow. Ya podes volver a la app y ver la cuenta en la seccion Cuentas.</p>
+        <ul>
+          <li>Usuario: ${escapeHtml(data.account.username || 'No informado')}</li>
+          <li>Tipo de cuenta: ${escapeHtml(data.account.accountType || 'No informado')}</li>
+          <li>Expira en: ${escapeHtml(data.account.expiresIn ? Math.round(data.account.expiresIn / 86400) + ' dias' : 'No informado')}</li>
+        </ul>
+      `;
+    }
+
+    if (error) {
+      result.innerHTML = `
+        <h2>No se pudo conectar</h2>
+        <p>Instagram devolvio un error durante la autorizacion.</p>
+        <ul>
+          <li>Error: ${escapeHtml(error)}</li>
+          <li>Motivo: ${escapeHtml(errorReason || 'No informado')}</li>
+          <li>Detalle: ${escapeHtml(errorDescription || 'No informado')}</li>
+        </ul>
+      `;
+    } else if (!code) {
+      result.innerHTML = `
+        <h2>Falta el codigo OAuth</h2>
+        <p>Esta URL esta correcta como callback, pero fue abierta sin el parametro <strong>code</strong>. Para probarla, volve a ReelFlow y toca "Conectar con Instagram".</p>
+      `;
+    } else {
+      exchangeCode().catch(exchangeError => {
+        const stateOk = expectedState && state === expectedState;
+        result.innerHTML = `
+          <h2>Instagram devolvio el codigo</h2>
+          <p>El redirect funciona, pero el backend todavia no pudo cambiar el codigo por token.</p>
+          <div class="form-group">
+            <label>Error del backend</label>
+            <input type="text" class="form-input" value="${escapeHtml(exchangeError.message)}" readonly />
+          </div>
+          <div class="form-group">
+            <label>Authorization code</label>
+            <div class="input-with-copy">
+              <input type="text" id="ig-oauth-code" class="form-input" value="${escapeHtml(code)}" readonly />
+              <button class="btn-copy" onclick="copyValue('ig-oauth-code')">Copiar</button>
+            </div>
+          </div>
+          <ul>
+            <li>Validacion de state: ${stateOk ? 'correcta' : 'pendiente o no coincide'}</li>
+            <li>App ID local: ${escapeHtml(appId || 'no guardado')}</li>
+            <li>Redirect URI usado: ${escapeHtml(callbackUrl)}</li>
+          </ul>
+        `;
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+/* ═══════════════════════════════════════════════════════════
+   REELFLOW — ANIMATIONS
+   ═══════════════════════════════════════════════════════════ */
+
+/* Fade in up */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Pulse */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+/* Spin */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Shimmer loading */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-2) 50%, var(--surface) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* Progress bar */
+.progress-bar {
+  height: 4px;
+  background: var(--bg-3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+/* Generating animation */
+.generating-item {
+  animation: fadeInUp 0.4s ease both;
+}
+
+.spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-hover);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+/* Stagger children */
+.stagger > * { animation: fadeInUp 0.3s ease both; }
+.stagger > *:nth-child(1) { animation-delay: 0.0s; }
+.stagger > *:nth-child(2) { animation-delay: 0.05s; }
+.stagger > *:nth-child(3) { animation-delay: 0.10s; }
+.stagger > *:nth-child(4) { animation-delay: 0.15s; }
+.stagger > *:nth-child(5) { animation-delay: 0.20s; }
+.stagger > *:nth-child(6) { animation-delay: 0.25s; }
+
+/* Connected badge pulse */
+.status-dot.active {
+  animation: statusPulse 2.5s ease infinite;
+}
+@keyframes statusPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(34,201,122,0.4); }
+  50%       { box-shadow: 0 0 0 5px rgba(34,201,122,0); }
+}
+
+/* Page transitions */
+.page.active { animation: pageIn 0.3s ease; }
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Template hover glow */
+.template-card.selected {
+  box-shadow: 0 0 0 2px var(--accent), 0 4px 20px var(--accent-glow);
+}
+
+/* Upload zone drag over */
+.upload-zone.drag-over {
+  animation: uploadPulse 0.8s ease infinite alternate;
+}
+@keyframes uploadPulse {
+  from { border-color: var(--accent); background: var(--accent-light); }
+  to   { border-color: rgba(124,109,250,0.5); background: rgba(124,109,250,0.05); }
+}
