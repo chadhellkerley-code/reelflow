@@ -14,6 +14,7 @@ const state = {
   editorVideos: [],
   referenceVideos: [],
   selectedReferences: new Set(),
+  selectedTemplates: new Set(['ig-cinematic-hook']),
   generatedVideos: [],
   selectedAccounts: new Set(),
   pubType: 'reel',
@@ -47,124 +48,224 @@ const FFMPEG_FONT_FILE = 'Inter.ttf';
 
 const LOCAL_VIDEO_TEMPLATES = [
   {
-    key: 'vertical-crop',
-    name: 'Reels 9:16',
-    desc: 'Recorte vertical centrado para Instagram y TikTok',
-    tags: ['9:16', 'Reels'],
+    key: 'ig-cinematic-hook',
+    name: 'Cinematic Hook',
+    desc: 'Barras, contraste cine, entrada suave y hook fuerte.',
+    tags: ['Reels', 'Cine'],
     preview: 'mock-story',
-    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'),
+    defaultHook: 'NO ERA LO QUE PARECIA',
+    defaultSub: 'miralo hasta el final',
+    audio: 'cinematic',
+    beats: [1.35, 0.85, 1.2, 0.7],
   },
   {
-    key: 'vertical-fit',
-    name: '9:16 sin recorte',
-    desc: 'Ajusta el video completo con fondo negro',
-    tags: ['9:16', 'Fit'],
-    preview: 'mock-square',
-    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black'),
-  },
-  {
-    key: 'blur-bg',
-    name: 'Blur Background',
-    desc: 'Fondo desenfocado con el video encima',
-    tags: ['9:16', 'Blur'],
-    preview: 'mock-gradient-overlay',
-    command: (input, output) => ffmpegComplexCommand(input, output, '[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=18:1[bg];[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2[v]'),
-  },
-  {
-    key: 'square-crop',
-    name: 'Cuadrado 1:1',
-    desc: 'Recorte cuadrado para feed',
-    tags: ['1:1', 'Feed'],
-    preview: 'mock-square',
-    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080'),
-  },
-  {
-    key: 'square-fit',
-    name: '1:1 con margen',
-    desc: 'Video completo dentro de lienzo cuadrado',
-    tags: ['1:1', 'Fit'],
-    preview: 'mock-minimal',
-    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2:black'),
-  },
-  {
-    key: 'landscape',
-    name: 'Horizontal 16:9',
-    desc: 'Versión horizontal para YouTube o X',
-    tags: ['16:9', 'Wide'],
-    preview: 'mock-landscape',
-    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080'),
-  },
-  {
-    key: 'white-frame',
-    name: 'Marco Blanco',
-    desc: 'Formato vertical con borde limpio',
-    tags: ['9:16', 'Clean'],
-    preview: 'mock-story',
-    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1000:1778:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:white'),
-  },
-  {
-    key: 'zoom-punch',
-    name: 'Zoom Punch',
-    desc: 'Zoom fijo para más impacto visual',
-    tags: ['9:16', 'Impacto'],
-    preview: 'mock-zoom',
-    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1188:2112:force_original_aspect_ratio=increase,crop=1080:1920'),
-  },
-  {
-    key: 'mirror',
-    name: 'Mirror',
-    desc: 'Invierte horizontalmente el video',
-    tags: ['9:16', 'Flip'],
-    preview: 'mock-duet',
-    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,hflip'),
-  },
-  {
-    key: 'split-mirror',
-    name: 'Split Mirror',
-    desc: 'Dos mitades simétricas estilo reacción',
-    tags: ['9:16', 'Split'],
-    preview: 'mock-split',
-    command: (input, output) => ffmpegComplexCommand(input, output, '[0:v]scale=540:1920:force_original_aspect_ratio=increase,crop=540:1920[left];[0:v]hflip,scale=540:1920:force_original_aspect_ratio=increase,crop=540:1920[right];[left][right]hstack=inputs=2[v]'),
-  },
-  {
-    key: 'black-white',
-    name: 'B/N',
-    desc: 'Blanco y negro con recorte vertical',
-    tags: ['9:16', 'B/N'],
-    preview: 'mock-minimal',
-    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=gray'),
-  },
-  {
-    key: 'punchy-color',
-    name: 'Color Punch',
-    desc: 'Más contraste y saturación',
-    tags: ['Color', 'Viral'],
-    preview: 'mock-gradient-overlay',
-    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,eq=contrast=1.18:saturation=1.18'),
-  },
-  {
-    key: 'warm',
-    name: 'Warm',
-    desc: 'Look cálido para lifestyle',
-    tags: ['Color', 'Warm'],
-    preview: 'mock-trending',
-    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,eq=saturation=1.1:gamma_r=1.08'),
-  },
-  {
-    key: 'sharpen',
-    name: 'Sharpen',
-    desc: 'Más nitidez para clips comprimidos',
-    tags: ['HD', 'Nitidez'],
+    key: 'ig-bold-captions',
+    name: 'Bold Captions',
+    desc: 'Subtitulos grandes, cortes rapidos y color viral.',
+    tags: ['Texto', 'Viral'],
     preview: 'mock-hook',
-    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,unsharp=5:5:1.0:5:5:0.0'),
+    defaultHook: 'ESTO CAMBIA TODO',
+    defaultSub: 'guardalo para despues',
+    audio: 'punch',
+    beats: [0.75, 0.65, 0.9, 0.55],
   },
   {
-    key: 'fade-in',
-    name: 'Fade In',
-    desc: 'Entrada suave desde negro',
-    tags: ['Intro', '9:16'],
+    key: 'ig-luxury-reveal',
+    name: 'Luxury Reveal',
+    desc: 'Look premium con reveal lento, marco y grano fino.',
+    tags: ['Premium', 'Reveal'],
+    preview: 'mock-minimal',
+    defaultHook: 'EL DETALLE IMPORTA',
+    defaultSub: 'version premium',
+    audio: 'warm',
+    beats: [1.7, 1.25, 1.5, 1.1],
+  },
+  {
+    key: 'ig-viral-zoom',
+    name: 'Viral Zoom',
+    desc: 'Zoom punch, flash transitions y texto de impacto.',
+    tags: ['Zoom', 'Impacto'],
+    preview: 'mock-zoom',
+    defaultHook: 'MIRA ESTO',
+    defaultSub: 'no lo esperaba',
+    audio: 'punch',
+    beats: [0.55, 0.8, 0.5, 0.75],
+  },
+  {
+    key: 'ig-clean-tutorial',
+    name: 'Clean Tutorial',
+    desc: 'Formato claro para pasos, tips y explicaciones.',
+    tags: ['Tips', 'Clean'],
+    preview: 'mock-slideshow',
+    defaultHook: '3 PASOS SIMPLES',
+    defaultSub: 'paso a paso',
+    audio: 'clean',
+    beats: [1.25, 1.25, 1.25, 1],
+  },
+  {
+    key: 'ig-product-spotlight',
+    name: 'Product Spotlight',
+    desc: 'Producto centrado, viñeta y etiquetas tipo showcase.',
+    tags: ['Producto', 'Venta'],
+    preview: 'mock-gradient-overlay',
+    defaultHook: 'NUEVO FAVORITO',
+    defaultSub: 'detalle por detalle',
+    audio: 'clean',
+    beats: [1.1, 0.9, 1.35, 0.8],
+  },
+  {
+    key: 'ig-story-pop',
+    name: 'Story Pop',
+    desc: 'Overlays de story, barra superior y movimiento liviano.',
+    tags: ['Story', 'Pop'],
+    preview: 'mock-story',
+    defaultHook: 'HOY PASO ESTO',
+    defaultSub: 'mini vlog',
+    audio: 'bright',
+    beats: [0.9, 1.05, 0.85, 1.1],
+  },
+  {
+    key: 'ig-documentary',
+    name: 'Mini Doc',
+    desc: 'Blanco y negro, grano, subtitulo sobrio y ritmo narrativo.',
+    tags: ['Doc', 'B/N'],
+    preview: 'mock-minimal',
+    defaultHook: 'LA HISTORIA REAL',
+    defaultSub: 'en 30 segundos',
+    audio: 'documentary',
+    beats: [1.8, 1.25, 1.6, 1.1],
+  },
+  {
+    key: 'ig-neon-glitch',
+    name: 'Neon Glitch',
+    desc: 'Color neon, flashes, bordes y energia nocturna.',
+    tags: ['Neon', 'Glitch'],
+    preview: 'mock-glitch',
+    defaultHook: 'SIN FILTRO',
+    defaultSub: 'modo noche',
+    audio: 'neon',
+    beats: [0.55, 0.45, 0.7, 0.5],
+  },
+  {
+    key: 'ig-fashion-cut',
+    name: 'Fashion Cut',
+    desc: 'Cortes elegantes, contraste suave y texto editorial.',
+    tags: ['Moda', 'Editorial'],
+    preview: 'mock-trending',
+    defaultHook: 'LOOK DEL DIA',
+    defaultSub: 'detalle final',
+    audio: 'warm',
+    beats: [0.8, 1.05, 0.75, 1.2],
+  },
+  {
+    key: 'ig-food-closeup',
+    name: 'Food Closeup',
+    desc: 'Color calido, nitidez y overlays para comida/producto.',
+    tags: ['Food', 'Warm'],
+    preview: 'mock-gradient-overlay',
+    defaultHook: 'PROBALO ASI',
+    defaultSub: 'queda increible',
+    audio: 'bright',
+    beats: [0.95, 0.8, 1.1, 0.75],
+  },
+  {
+    key: 'ig-travel-dream',
+    name: 'Travel Dream',
+    desc: 'Movimiento suave, brillo limpio y texto aspiracional.',
+    tags: ['Travel', 'Dream'],
+    preview: 'mock-landscape',
+    defaultHook: 'UN LUGAR PARA VOLVER',
+    defaultSub: 'guarda esta idea',
+    audio: 'wide',
+    beats: [1.45, 1.2, 1.55, 1.05],
+  },
+  {
+    key: 'ig-fitness-pulse',
+    name: 'Fitness Pulse',
+    desc: 'Ritmo agresivo, contraste alto y energia deportiva.',
+    tags: ['Fit', 'Pulse'],
     preview: 'mock-countdown',
-    command: (input, output) => ffmpegVideoFilterCommand(input, output, 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fade=t=in:st=0:d=0.6'),
+    defaultHook: 'NO PARES AHORA',
+    defaultSub: 'una repeticion mas',
+    audio: 'punch',
+    beats: [0.5, 0.5, 0.65, 0.45],
+  },
+  {
+    key: 'ig-before-after',
+    name: 'Before / After',
+    desc: 'Comparacion visual con divisor y llamada al resultado.',
+    tags: ['Antes', 'Despues'],
+    preview: 'mock-before-after',
+    defaultHook: 'ANTES VS DESPUES',
+    defaultSub: 'el cambio se nota',
+    audio: 'clean',
+    beats: [1.05, 0.85, 1.25, 0.75],
+  },
+  {
+    key: 'ig-podcast-clips',
+    name: 'Podcast Clip',
+    desc: 'Subtitulo central, marco inferior y audio de voz mejorado.',
+    tags: ['Voz', 'Clip'],
+    preview: 'mock-kinetic',
+    defaultHook: 'DIJO ESTO',
+    defaultSub: 'clip completo',
+    audio: 'voice',
+    beats: [1.6, 1.4, 1.2, 1.5],
+  },
+  {
+    key: 'ig-meme-reaction',
+    name: 'Meme Reaction',
+    desc: 'Split visual, zoom corto y captions tipo reaccion.',
+    tags: ['Meme', 'React'],
+    preview: 'mock-duet',
+    defaultHook: 'YO CUANDO',
+    defaultSub: 'situacion real',
+    audio: 'neon',
+    beats: [0.65, 0.55, 0.8, 0.5],
+  },
+  {
+    key: 'ig-soft-minimal',
+    name: 'Soft Minimal',
+    desc: 'Estetica limpia, texto delicado y ritmo suave.',
+    tags: ['Minimal', 'Soft'],
+    preview: 'mock-minimal',
+    defaultHook: 'PEQUENOS DETALLES',
+    defaultSub: 'menos ruido, mas foco',
+    audio: 'warm',
+    beats: [1.6, 1.35, 1.8, 1.25],
+  },
+  {
+    key: 'ig-countdown-launch',
+    name: 'Countdown Launch',
+    desc: 'Intro con cuenta, flash inicial y cierre de accion.',
+    tags: ['Launch', 'Intro'],
+    preview: 'mock-countdown',
+    defaultHook: '3... 2... 1...',
+    defaultSub: 'ya esta disponible',
+    audio: 'punch',
+    beats: [0.55, 0.55, 0.55, 1],
+  },
+  {
+    key: 'ig-ugc-review',
+    name: 'UGC Review',
+    desc: 'Estilo review, marco social y texto de recomendacion.',
+    tags: ['UGC', 'Review'],
+    preview: 'mock-story',
+    defaultHook: 'LO PROBE POR TI',
+    defaultSub: 'mi opinion sincera',
+    audio: 'voice',
+    beats: [1.05, 0.95, 1.2, 0.85],
+  },
+  {
+    key: 'ig-night-cinema',
+    name: 'Night Cinema',
+    desc: 'Cine oscuro, contraste fuerte, grano y glow discreto.',
+    tags: ['Noche', 'Cine'],
+    preview: 'mock-glitch',
+    defaultHook: 'CUANDO CAE LA NOCHE',
+    defaultSub: 'modo cinematico',
+    audio: 'cinematic',
+    beats: [1.25, 0.9, 1.4, 0.8],
   },
 ];
 
@@ -1054,9 +1155,148 @@ function ffmpegComplexCommand(input, output, filterGraph) {
 }
 
 function initEditor() {
+  renderFormatTemplates();
+  updateFormatCount();
   renderReferenceVideos();
   updateReferenceCount();
   updateEditorEngineStatus();
+}
+
+function getTemplatePreviewHtml(template) {
+  const preview = template.preview || 'mock-story';
+  const hook = escapeHtml(template.defaultHook || template.name);
+
+  const previewByKey = {
+    'mock-hook': `
+      <div class="template-mock mock-hook">
+        <span class="mock-text-top">${hook}</span>
+        <span class="mock-cut">CUT</span>
+        <span class="mock-reveal">REVEAL</span>
+      </div>
+    `,
+    'mock-kinetic': `
+      <div class="template-mock mock-kinetic">
+        <span class="mock-word mock-w1">TEXTO</span>
+        <span class="mock-word mock-w2">EN</span>
+        <span class="mock-word mock-w3">RITMO</span>
+      </div>
+    `,
+    'mock-split': `
+      <div class="template-mock mock-split">
+        <div class="mock-top-half">VIDEO</div>
+        <div class="mock-bottom-half">OVERLAY</div>
+      </div>
+    `,
+    'mock-minimal': `<div class="template-mock mock-minimal"><span class="mock-minimal-text">${hook}</span></div>`,
+    'mock-before-after': `
+      <div class="template-mock mock-before-after">
+        <span class="mock-before">ANTES</span>
+        <span class="mock-divider">/</span>
+        <span class="mock-after">DESPUES</span>
+      </div>
+    `,
+    'mock-slideshow': `
+      <div class="template-mock mock-slideshow">
+        <span class="mock-slide mock-s1">1</span>
+        <span class="mock-slide mock-s2">2</span>
+        <span class="mock-slide mock-s3">3</span>
+      </div>
+    `,
+    'mock-countdown': `
+      <div class="template-mock mock-countdown">
+        <span class="mock-count">3</span>
+        <span class="mock-count-label">COUNTDOWN</span>
+      </div>
+    `,
+    'mock-zoom': `<div class="template-mock mock-zoom"><span class="mock-zoom-text">ZOOM</span></div>`,
+    'mock-duet': `
+      <div class="template-mock mock-duet">
+        <div class="mock-duet-left">BASE</div>
+        <div class="mock-duet-right">REACT</div>
+      </div>
+    `,
+    'mock-trending': `
+      <div class="template-mock mock-trending">
+        <span class="mock-tf-text">POV</span>
+        <span class="mock-tf-sub">${hook}</span>
+      </div>
+    `,
+    'mock-glitch': `<div class="template-mock mock-glitch"><span class="mock-glitch-text">GLITCH</span></div>`,
+    'mock-square': `<div class="template-mock mock-square"><div class="mock-square-inner">9:16</div></div>`,
+    'mock-landscape': `<div class="template-mock mock-landscape"><span class="mock-landscape-text">TRAVEL</span></div>`,
+    'mock-gradient-overlay': `<div class="template-mock mock-gradient-overlay"><span class="mock-grad-text">${hook}</span></div>`,
+    'mock-story': `
+      <div class="template-mock mock-story">
+        <span class="mock-story-bar"></span>
+        <span class="mock-story-icon">◧</span>
+        <span class="mock-story-text">${hook}</span>
+      </div>
+    `,
+  };
+
+  return previewByKey[preview] || previewByKey['mock-story'];
+}
+
+function renderFormatTemplates() {
+  const grid = document.getElementById('instagram-format-grid');
+  if (!grid) return;
+
+  const validKeys = new Set(LOCAL_VIDEO_TEMPLATES.map(template => template.key));
+  state.selectedTemplates = new Set([...state.selectedTemplates].filter(key => validKeys.has(key)));
+
+  grid.innerHTML = LOCAL_VIDEO_TEMPLATES.map(template => {
+    const selected = state.selectedTemplates.has(template.key);
+    return `
+      <button type="button" class="template-card ${selected ? 'selected' : ''}" onclick="toggleFormatTemplate('${template.key}')">
+        <div class="template-preview">${getTemplatePreviewHtml(template)}</div>
+        <div class="template-info">
+          <div class="template-name">${escapeHtml(template.name)}</div>
+          <div class="template-desc">${escapeHtml(template.desc)}</div>
+          <div class="template-tags">
+            ${template.tags.map(tag => `<span class="badge badge-inactive">${escapeHtml(tag)}</span>`).join('')}
+          </div>
+        </div>
+        <div class="template-check">✓</div>
+      </button>
+    `;
+  }).join('');
+}
+
+function toggleFormatTemplate(key) {
+  if (state.selectedTemplates.has(key)) {
+    state.selectedTemplates.delete(key);
+  } else {
+    state.selectedTemplates.add(key);
+  }
+  renderFormatTemplates();
+  updateFormatCount();
+}
+
+function selectAllFormats() {
+  state.selectedTemplates = new Set(LOCAL_VIDEO_TEMPLATES.map(template => template.key));
+  renderFormatTemplates();
+  updateFormatCount();
+}
+
+function clearFormats() {
+  state.selectedTemplates.clear();
+  renderFormatTemplates();
+  updateFormatCount();
+}
+
+function getSelectedTemplates() {
+  return LOCAL_VIDEO_TEMPLATES.filter(template => state.selectedTemplates.has(template.key));
+}
+
+function updateFormatCount() {
+  const selected = state.selectedTemplates.size;
+  const selectedEl = document.getElementById('selected-formats-count');
+  const totalEl = document.getElementById('total-formats-count');
+  const genCount = document.getElementById('gen-count');
+
+  if (selectedEl) selectedEl.textContent = selected;
+  if (totalEl) totalEl.textContent = LOCAL_VIDEO_TEMPLATES.length;
+  if (genCount) genCount.textContent = selected;
 }
 
 function updateEditorEngineStatus() {
@@ -1098,36 +1338,95 @@ function getReferenceEditProfile(template, referenceMeta = {}, index = 0) {
   const gamma = brightness < 0.42 ? 1.08 : brightness > 0.62 ? 0.96 : 1.02;
   const grade = `eq=contrast=${contrastBoost.toFixed(2)}:saturation=${saturationBoost.toFixed(2)}:gamma=${gamma.toFixed(2)}`;
 
+  const crop = (scaleWidth = 860, cadenceOffset = 0.7) =>
+    `scale=${scaleWidth}:${Math.round(scaleWidth * 16 / 9)}:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + cadenceOffset})`;
+
   const profileByKey = {
-    'blur-bg': {
-      name: 'recortes + fondo blur + movimiento',
-      filter: `scale=820:1458:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.5}),boxblur=3:1,${grade},unsharp=5:5:1.0:5:5:0`,
+    'ig-cinematic-hook': {
+      name: 'cine vertical + barras + reveal',
+      filter: `${crop(850)},fade=t=in:st=0:d=0.18,eq=contrast=1.28:saturation=0.96:gamma=0.97,vignette=PI/5,unsharp=5:5:0.8:5:5:0`,
     },
-    'black-white': {
-      name: 'recortes + blanco y negro + punch',
-      filter: `scale=860:1529:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.8}),format=gray,eq=contrast=1.35,unsharp=5:5:1.1:5:5:0`,
+    'ig-bold-captions': {
+      name: 'captions grandes + color viral',
+      filter: `${crop(880, 0.45)},eq=contrast=1.24:saturation=1.34:gamma=${gamma.toFixed(2)},unsharp=5:5:1.15:5:5:0`,
     },
-    'punchy-color': {
-      name: 'recortes + color viral + punch',
-      filter: `scale=880:1564:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.7}),${grade},unsharp=5:5:1.2:5:5:0`,
+    'ig-luxury-reveal': {
+      name: 'reveal premium + grano fino',
+      filter: `${crop(830, 1.1)},fade=t=in:st=0:d=0.28,eq=contrast=1.16:saturation=0.92:gamma=1.03,vignette=PI/6,noise=alls=4:allf=t+u`,
     },
-    warm: {
-      name: 'recortes + look cálido + cámara suave',
-      filter: `scale=845:1502:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence + 0.4}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 1}),eq=saturation=${Math.max(1.2, saturationBoost).toFixed(2)}:gamma_r=1.12:contrast=${contrastBoost.toFixed(2)}`,
+    'ig-viral-zoom': {
+      name: 'zoom punch + flash cuts',
+      filter: `${crop(940, 0.35)},eq=contrast=1.34:saturation=1.38,unsharp=5:5:1.25:5:5:0`,
     },
-    'fade-in': {
-      name: 'recortes + entrada animada',
-      filter: `scale=860:1529:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.5}),fade=t=in:st=0:d=0.25,eq=contrast=1.2:saturation=1.18`,
+    'ig-clean-tutorial': {
+      name: 'tutorial limpio + pasos',
+      filter: `${crop(820, 0.9)},eq=contrast=1.08:saturation=1.08:gamma=1.02,unsharp=5:5:0.85:5:5:0`,
     },
-    'zoom-punch': {
-      name: 'recortes + zoom punch',
-      filter: `scale=920:1636:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.6}),eq=contrast=1.28:saturation=1.32,unsharp=5:5:1.2:5:5:0`,
+    'ig-product-spotlight': {
+      name: 'spotlight producto + viñeta',
+      filter: `${crop(870, 0.6)},eq=contrast=1.22:saturation=1.18:gamma=0.98,vignette=PI/5,unsharp=5:5:1.1:5:5:0`,
+    },
+    'ig-story-pop': {
+      name: 'story pop + movimiento social',
+      filter: `${crop(845, 0.5)},eq=contrast=1.18:saturation=1.28:gamma=1.02,unsharp=5:5:0.95:5:5:0`,
+    },
+    'ig-documentary': {
+      name: 'mini documental + blanco y negro',
+      filter: `${crop(835, 1.2)},format=gray,eq=contrast=1.22:gamma=1.04,noise=alls=5:allf=t+u,vignette=PI/7`,
+    },
+    'ig-neon-glitch': {
+      name: 'neon glitch + contraste nocturno',
+      filter: `${crop(900, 0.35)},eq=contrast=1.42:saturation=1.55:gamma=0.92,unsharp=5:5:1.2:5:5:0`,
+    },
+    'ig-fashion-cut': {
+      name: 'editorial fashion + cortes limpios',
+      filter: `${crop(860, 0.75)},eq=contrast=1.18:saturation=1.05:gamma=0.98,vignette=PI/7,unsharp=5:5:0.9:5:5:0`,
+    },
+    'ig-food-closeup': {
+      name: 'food closeup + color calido',
+      filter: `${crop(910, 0.55)},eq=contrast=1.2:saturation=1.32:gamma_r=1.08:gamma=1.02,unsharp=5:5:1.25:5:5:0`,
+    },
+    'ig-travel-dream': {
+      name: 'travel dream + camara suave',
+      filter: `${crop(825, 1.4)},eq=contrast=1.1:saturation=1.24:gamma=1.05,unsharp=5:5:0.7:5:5:0`,
+    },
+    'ig-fitness-pulse': {
+      name: 'fitness pulse + impacto alto',
+      filter: `${crop(930, 0.3)},eq=contrast=1.36:saturation=1.22:gamma=0.96,unsharp=5:5:1.3:5:5:0`,
+    },
+    'ig-before-after': {
+      name: 'antes/despues + divisor visual',
+      filter: `${crop(850, 0.65)},${grade},unsharp=5:5:1.0:5:5:0`,
+    },
+    'ig-podcast-clips': {
+      name: 'clip hablado + foco en texto',
+      filter: `${crop(825, 1.1)},eq=contrast=1.12:saturation=1.05:gamma=1.02,unsharp=5:5:0.75:5:5:0`,
+    },
+    'ig-meme-reaction': {
+      name: 'meme reaction + zoom corto',
+      filter: `${crop(910, 0.4)},eq=contrast=1.28:saturation=1.35:gamma=1.0,unsharp=5:5:1.2:5:5:0`,
+    },
+    'ig-soft-minimal': {
+      name: 'minimal suave + textura limpia',
+      filter: `${crop(815, 1.3)},eq=contrast=1.05:saturation=0.94:gamma=1.08,unsharp=5:5:0.45:5:5:0`,
+    },
+    'ig-countdown-launch': {
+      name: 'countdown launch + flash inicial',
+      filter: `${crop(900, 0.45)},fade=t=in:st=0:d=0.12,eq=contrast=1.3:saturation=1.26,unsharp=5:5:1.15:5:5:0`,
+    },
+    'ig-ugc-review': {
+      name: 'review UGC + marco social',
+      filter: `${crop(845, 0.75)},eq=contrast=1.16:saturation=1.14:gamma=1.03,unsharp=5:5:0.9:5:5:0`,
+    },
+    'ig-night-cinema': {
+      name: 'cine nocturno + grano + glow',
+      filter: `${crop(875, 0.75)},eq=contrast=1.38:saturation=1.12:gamma=0.9,vignette=PI/4,noise=alls=6:allf=t+u,unsharp=5:5:0.95:5:5:0`,
     },
   };
 
   return profileByKey[template.key] || {
-    name: 'recortes + cámara dinámica',
-    filter: `scale=860:1529:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.9}),${grade},unsharp=5:5:1.0:5:5:0`,
+    name: 'reel dinamico Instagram',
+    filter: `${crop(860, 0.9)},${grade},unsharp=5:5:1.0:5:5:0`,
   };
 }
 
@@ -1292,6 +1591,29 @@ function buildReferenceDrivenSegments(duration, referenceMeta = {}, index = 0, s
     const end = Math.min(source.end, cursor + beat);
     if (end - cursor >= 0.32) segments.push({ start: cursor, end });
 
+    cursor = end + gap;
+    beatIndex++;
+  }
+
+  return segments.length > 1 ? segments : [{ start: 0, end: duration }];
+}
+
+function buildTemplateDrivenSegments(duration, template = {}, referenceMeta = {}, index = 0) {
+  if (!duration || duration < 3.5) return [{ start: 0, end: duration }];
+
+  const referenceBeats = Array.isArray(referenceMeta.sceneTimes) && referenceMeta.sceneTimes.length > 0
+    ? getReferenceBeatDurations(referenceMeta)
+    : [];
+  const beats = referenceBeats.length > 0 ? referenceBeats : (template.beats || [1.15, 0.9, 1.25, 0.8]);
+  const gap = Math.min(0.18, Math.max(0.08, 0.1 + (index % 3) * 0.025));
+  const segments = [];
+  let cursor = 0;
+  let beatIndex = 0;
+
+  while (cursor < duration - 0.28 && segments.length < 80) {
+    const beat = Math.max(0.45, Math.min(2.8, Number(beats[beatIndex % beats.length]) || 1));
+    const end = Math.min(duration, cursor + beat);
+    if (end - cursor >= 0.32) segments.push({ start: cursor, end });
     cursor = end + gap;
     beatIndex++;
   }
@@ -1545,6 +1867,137 @@ function buildReferenceOverlayFilters(referenceMeta = {}, textConfig = {}) {
   return filters.filter(Boolean);
 }
 
+function getTemplateTextConfig(template, textConfig = {}) {
+  return {
+    hook: textConfig.hook || template.defaultHook || '',
+    sub: textConfig.sub || template.defaultSub || '',
+    username: textConfig.username || '',
+  };
+}
+
+function buildTemplateOverlayFilters(template, referenceMeta = {}, textConfig = {}, index = 0) {
+  const mergedText = getTemplateTextConfig(template, textConfig);
+  const visual = referenceMeta.visual || {};
+  const band = visual.textBand || {};
+  const textY = Math.max(150, Math.min(890, Math.round((band.y || 0.24) * 1280)));
+  const hook = mergedText.hook;
+  const sub = mergedText.sub;
+  const username = mergedText.username;
+  const filters = [];
+  const safeTop = 74;
+  const bottom = 1086;
+
+  const addCenteredText = (text, y, size, color = 'white', border = 'black', borderWidth = 4) => {
+    if (!text) return;
+    filters.push(`drawtext=fontfile=${FFMPEG_FONT_FILE}:text='${escapeDrawText(text)}':x=(w-text_w)/2:y=${Math.round(y)}:fontsize=${size}:fontcolor=${color}:borderw=${borderWidth}:bordercolor=${border}@0.75`);
+  };
+
+  const addUsername = () => {
+    if (!username) return;
+    filters.push('drawbox=x=42:y=1136:w=300:h=54:color=black@0.34:t=fill');
+    filters.push(`drawtext=fontfile=${FFMPEG_FONT_FILE}:text='${escapeDrawText(username)}':x=62:y=1150:fontsize=28:fontcolor=white:borderw=2:bordercolor=black@0.7`);
+  };
+
+  switch (template.key) {
+    case 'ig-cinematic-hook':
+    case 'ig-night-cinema':
+      filters.push('drawbox=x=0:y=0:w=720:h=88:color=black@0.78:t=fill');
+      filters.push('drawbox=x=0:y=1192:w=720:h=88:color=black@0.78:t=fill');
+      filters.push('drawbox=x=40:y=182:w=640:h=122:color=black@0.42:t=fill:enable=lt(t\\,5)');
+      addCenteredText(hook, 210, 46);
+      addCenteredText(sub, 1118, 30, 'white', 'black', 3);
+      break;
+    case 'ig-bold-captions':
+    case 'ig-viral-zoom':
+    case 'ig-fitness-pulse':
+      filters.push('drawbox=x=30:y=' + Math.max(118, textY - 44) + ':w=660:h=132:color=black@0.48:t=fill');
+      addCenteredText(hook, Math.max(145, textY - 8), 58, 'white', 'black');
+      addCenteredText(sub, Math.max(228, textY + 66), 34, 'yellow', 'black', 3);
+      break;
+    case 'ig-luxury-reveal':
+    case 'ig-fashion-cut':
+    case 'ig-soft-minimal':
+      filters.push('drawbox=x=34:y=34:w=652:h=1212:color=white@0.22:t=3');
+      addCenteredText(hook, safeTop, 38, 'white', 'black', 3);
+      addCenteredText(sub, bottom, 28, 'white', 'black', 2);
+      break;
+    case 'ig-clean-tutorial':
+      filters.push('drawbox=x=42:y=96:w=104:h=52:color=white@0.9:t=fill');
+      filters.push(`drawtext=fontfile=${FFMPEG_FONT_FILE}:text='TIP':x=72:y=108:fontsize=28:fontcolor=black:borderw=0`);
+      addCenteredText(hook, 170, 44);
+      addCenteredText(sub, 1050, 32);
+      break;
+    case 'ig-product-spotlight':
+    case 'ig-food-closeup':
+      filters.push('drawbox=x=52:y=928:w=616:h=142:color=black@0.46:t=fill');
+      addCenteredText(hook, 956, 44);
+      addCenteredText(sub, 1016, 30, 'white', 'black', 3);
+      break;
+    case 'ig-story-pop':
+    case 'ig-ugc-review':
+      filters.push('drawbox=x=52:y=42:w=616:h=6:color=white@0.85:t=fill');
+      filters.push('drawbox=x=48:y=92:w=624:h=102:color=black@0.38:t=fill');
+      addCenteredText(hook, 120, 42);
+      addCenteredText(sub, 1018, 31);
+      break;
+    case 'ig-documentary':
+    case 'ig-podcast-clips':
+      filters.push('drawbox=x=34:y=862:w=652:h=172:color=black@0.62:t=fill');
+      addCenteredText(hook, 898, 42);
+      addCenteredText(sub, 958, 30, 'white', 'black', 2);
+      break;
+    case 'ig-neon-glitch':
+    case 'ig-meme-reaction':
+      filters.push('drawbox=x=26:y=120:w=668:h=124:color=black@0.44:t=fill');
+      addCenteredText(hook, 150, 52, 'cyan', 'black');
+      addCenteredText(sub, 214, 30, 'magenta', 'black', 3);
+      break;
+    case 'ig-travel-dream':
+      filters.push('drawbox=x=0:y=874:w=720:h=214:color=black@0.3:t=fill');
+      addCenteredText(hook, 920, 42);
+      addCenteredText(sub, 980, 30);
+      break;
+    case 'ig-before-after':
+      filters.push('drawbox=x=358:y=116:w=4:h=1000:color=white@0.75:t=fill');
+      filters.push(`drawtext=fontfile=${FFMPEG_FONT_FILE}:text='ANTES':x=80:y=112:fontsize=30:fontcolor=white:borderw=3:bordercolor=black@0.7`);
+      filters.push(`drawtext=fontfile=${FFMPEG_FONT_FILE}:text='DESPUES':x=430:y=112:fontsize=30:fontcolor=white:borderw=3:bordercolor=black@0.7`);
+      addCenteredText(hook, 1050, 38);
+      break;
+    case 'ig-countdown-launch':
+      filters.push(`drawtext=fontfile=${FFMPEG_FONT_FILE}:text='3':x=(w-text_w)/2:y=430:fontsize=180:fontcolor=white:borderw=8:bordercolor=black@0.65:enable=lt(t\\,0.75)`);
+      filters.push(`drawtext=fontfile=${FFMPEG_FONT_FILE}:text='2':x=(w-text_w)/2:y=430:fontsize=180:fontcolor=white:borderw=8:bordercolor=black@0.65:enable=between(t\\,0.75\\,1.5)`);
+      filters.push(`drawtext=fontfile=${FFMPEG_FONT_FILE}:text='1':x=(w-text_w)/2:y=430:fontsize=180:fontcolor=white:borderw=8:bordercolor=black@0.65:enable=between(t\\,1.5\\,2.25)`);
+      addCenteredText(hook, 142, 42);
+      addCenteredText(sub, 1050, 32);
+      break;
+    default:
+      filters.push(...buildReferenceOverlayFilters(referenceMeta, mergedText));
+  }
+
+  addUsername();
+  if (index % 2 === 1) filters.push('drawbox=x=0:y=0:w=720:h=1280:color=white@0.035:t=fill:enable=lt(mod(t\\,1.2)\\,0.08)');
+  return filters.filter(Boolean);
+}
+
+function getTemplateAudioFilter(template, hasAudio) {
+  if (!hasAudio) return '';
+
+  const common = 'afade=t=in:st=0:d=0.08,alimiter=limit=0.92';
+  const filterByType = {
+    cinematic: `acompressor=threshold=0.13:ratio=2.2:attack=18:release=220,bass=g=3,treble=g=-1,${common}`,
+    punch: `acompressor=threshold=0.17:ratio=3:attack=6:release=90,bass=g=4,treble=g=2,${common}`,
+    warm: `acompressor=threshold=0.14:ratio=2:attack=14:release=180,bass=g=2,treble=g=-0.5,${common}`,
+    clean: `acompressor=threshold=0.12:ratio=1.8:attack=10:release=160,treble=g=1,${common}`,
+    bright: `acompressor=threshold=0.13:ratio=2:attack=8:release=140,treble=g=2.5,${common}`,
+    documentary: `acompressor=threshold=0.1:ratio=2.4:attack=18:release=220,highpass=f=80,${common}`,
+    neon: `acompressor=threshold=0.2:ratio=3.2:attack=4:release=80,bass=g=5,treble=g=3,${common}`,
+    wide: `acompressor=threshold=0.13:ratio=2:attack=16:release=200,bass=g=2,treble=g=1,${common}`,
+    voice: `highpass=f=90,acompressor=threshold=0.09:ratio=3:attack=8:release=180,treble=g=2,${common}`,
+  };
+
+  return filterByType[template.audio] || common;
+}
+
 function appendVideoFilters(baseFilter, extraFilters = [], segment = null) {
   const filters = [baseFilter, ...extraFilters].filter(Boolean);
   if (segment && segment.transition) {
@@ -1566,6 +2019,7 @@ function ffmpegSmartEditCommand(input, output, editPlan) {
   const profile = editPlan.profile;
   const segments = editPlan.segments || [];
   const overlayFilters = editPlan.overlayFilters || [];
+  const audioFilter = editPlan.audioFilter || '';
 
   if (!editPlan.hasAudio) {
     if (segments.length > 1) {
@@ -1607,16 +2061,20 @@ function ffmpegSmartEditCommand(input, output, editPlan) {
       concatInputs.push(`[v${index}][a${index}]`);
     });
 
+    const concat = `${chains.join(';')};${concatInputs.join('')}concat=n=${segments.length}:v=1:a=1[v][a]`;
+    const audio = audioFilter ? `;[a]${audioFilter}[ao]` : '';
+
     return [
       '-i', input,
-      '-filter_complex', `${chains.join(';')};${concatInputs.join('')}concat=n=${segments.length}:v=1:a=1[v][a]`,
-      ...ffmpegRenderArgs(output, '[a]'),
+      '-filter_complex', `${concat}${audio}`,
+      ...ffmpegRenderArgs(output, audioFilter ? '[ao]' : '[a]'),
     ];
   }
 
+  const audioChain = audioFilter ? `[0:a]${audioFilter}[a]` : '[0:a]anull[a]';
   return [
     '-i', input,
-    '-filter_complex', `[0:v]${appendVideoFilters(profile.filter, overlayFilters)}[v];[0:a]anull[a]`,
+    '-filter_complex', `[0:v]${appendVideoFilters(profile.filter, overlayFilters)}[v];${audioChain}`,
     ...ffmpegRenderArgs(output, '[a]'),
   ];
 }
@@ -1661,7 +2119,6 @@ function renderReferenceVideos() {
 
   grid.innerHTML = state.referenceVideos.map((ref, i) => {
     const selected = state.selectedReferences.has(ref.id);
-    const template = getReferenceTemplate(ref, i);
     return `
       <div class="reference-card ${selected ? 'selected' : ''}" data-reference-id="${ref.id}" onclick="toggleReferenceVideo('${ref.id}')">
         <div class="reference-preview">
@@ -1669,7 +2126,7 @@ function renderReferenceVideos() {
         </div>
         <div class="reference-info">
           <div class="reference-name">${escapeHtml(ref.name)}</div>
-          <div class="reference-meta">${(ref.size / 1024 / 1024).toFixed(1)} MB · ${escapeHtml(template.name)}</div>
+          <div class="reference-meta">${(ref.size / 1024 / 1024).toFixed(1)} MB · ritmo y estilo</div>
         </div>
         <button class="reference-remove" onclick="event.stopPropagation(); removeReferenceVideo('${ref.id}')" aria-label="Quitar referencia">×</button>
         <div class="template-check">✓</div>
@@ -1712,11 +2169,10 @@ function updateReferenceCount() {
   const total = state.referenceVideos.length;
   const selectedEl = document.getElementById('selected-references-count');
   const totalEl = document.getElementById('total-references-count');
-  const genCount = document.getElementById('gen-count');
 
   if (selectedEl) selectedEl.textContent = selected;
   if (totalEl) totalEl.textContent = total;
-  if (genCount) genCount.textContent = selected;
+  updateFormatCount();
 }
 
 function setRenderStatus(id, text, type = '') {
@@ -1814,7 +2270,7 @@ function safeFilePart(value) {
   return String(value || 'video').replace(/\.[^.]+$/, '').replace(/[^a-z0-9._-]/gi, '-').slice(0, 80);
 }
 
-function renderPendingResult(reference, template, index, profile, editStats, geminiPlan = null) {
+function renderPendingResult(template, reference, index, profile, editStats, geminiPlan = null) {
   const item = document.createElement('div');
   const id = `render_${Date.now()}_${index}`;
   const cutText = editStats?.mode === 'reference'
@@ -1822,15 +2278,18 @@ function renderPendingResult(reference, template, index, profile, editStats, gem
     : editStats?.mode === 'rhythm'
       ? `${Math.max(0, editStats.rhythmCutCount || 0)} corte(s) de ritmo`
       : 'estilo visual';
+  const referenceText = reference?.name
+    ? `Referencia: ${escapeHtml(reference.name)}`
+    : 'Sin referencia: ritmo propio del formato';
   item.className = 'result-item generating-item';
   item.id = id;
   item.innerHTML = `
     <div class="result-thumb">◧</div>
     <div class="result-info">
-      <div class="result-name">Ref ${index + 1}: ${escapeHtml(reference.name)}</div>
+      <div class="result-name">${index + 1}. ${escapeHtml(template.name)}</div>
       <div class="result-meta" id="${id}_status">En cola...</div>
       <div class="result-meta">Edición: ${escapeHtml(profile.name)} · ${escapeHtml(cutText)}</div>
-      <div class="result-meta">${geminiPlan ? `Gemini Omni: ${escapeHtml(geminiPlan.profileName || geminiPlan.pacing || 'plan aplicado')}` : 'Ejemplar analizado: ritmo, cortes, look y zonas de texto/overlay'}</div>
+      <div class="result-meta">${geminiPlan ? `Gemini Omni: ${escapeHtml(geminiPlan.profileName || geminiPlan.pacing || 'plan aplicado')}` : referenceText}</div>
       <div class="result-actions" id="${id}_actions"></div>
     </div>
   `;
@@ -1855,12 +2314,14 @@ function renderCompletedResult(resultId, generated) {
 
 async function generateFormats() {
   if (state.editorVideos.length === 0) { toast('Subí tu video base', 'error'); return; }
-  if (state.selectedReferences.size === 0) { toast('Seleccioná al menos un video de referencia', 'error'); return; }
+  const selectedTemplates = getSelectedTemplates();
+  if (selectedTemplates.length === 0) { toast('Seleccioná al menos un formato de Instagram', 'error'); return; }
 
   const btn = document.getElementById('generate-btn');
   const selectedReferences = state.referenceVideos.filter(ref => state.selectedReferences.has(ref.id));
+  const referenceMetas = new Map();
   btn.disabled = true;
-  btn.innerHTML = `<span class="spinner"></span> Procesando ${selectedReferences.length} referencia(s)...`;
+  btn.innerHTML = `<span class="spinner"></span> Procesando ${selectedTemplates.length} formato(s)...`;
 
   document.getElementById('editor-step-4').style.display = 'block';
   const results = document.getElementById('generated-results');
@@ -1888,12 +2349,11 @@ async function generateFormats() {
 
     for (let i = 0; i < selectedReferences.length; i++) {
       const reference = selectedReferences[i];
-      const referenceIndex = state.referenceVideos.findIndex(ref => ref.id === reference.id);
       const referenceInputName = `reference-${Date.now()}-${i}.${reference.name.split('.').pop() || 'mp4'}`;
       let referenceMeta = {};
-      let geminiPlan = null;
 
       if (reference.file) {
+        statusEl.textContent = `Analizando referencia opcional ${i + 1} de ${selectedReferences.length}...`;
         await ffmpeg.writeFile(referenceInputName, await runtime.fetchFile(reference.file));
         const browserReferenceDuration = await getBrowserVideoDuration(reference.file).catch(() => 0);
         const probedReferenceDuration = await probeDuration(ffmpeg, referenceInputName, `ref-duration-${i}.txt`).catch(() => 0);
@@ -1902,30 +2362,42 @@ async function generateFormats() {
         referenceMeta.visual = await analyzeReferenceVisualTemplate(reference.file, referenceMeta.duration).catch(() => ({}));
         await ffmpeg.deleteFile(referenceInputName).catch(() => {});
       }
+      referenceMetas.set(reference.id, referenceMeta);
+    }
+
+    await ensureFFmpegFont(runtime);
+
+    for (let i = 0; i < selectedTemplates.length; i++) {
+      const template = selectedTemplates[i];
+      const reference = selectedReferences.length > 0 ? selectedReferences[i % selectedReferences.length] : null;
+      let referenceMeta = reference ? (referenceMetas.get(reference.id) || {}) : {};
+      let geminiPlan = null;
 
       if (isGeminiEnabled()) {
-        statusEl.textContent = `Gemini Omni analizando referencia ${i + 1} de ${selectedReferences.length}...`;
+        statusEl.textContent = reference
+          ? `Gemini Omni ajustando ${template.name} con referencia ${i + 1} de ${selectedTemplates.length}...`
+          : `Preparando ${template.name} sin referencia externa...`;
         try {
-          geminiPlan = await getGeminiEditPlan(baseVideo, reference, referenceMeta, baseTextConfig);
-          referenceMeta = applyGeminiPlanToReferenceMeta(referenceMeta, geminiPlan);
+          if (reference) {
+            geminiPlan = await getGeminiEditPlan(baseVideo, reference, referenceMeta, baseTextConfig);
+            referenceMeta = applyGeminiPlanToReferenceMeta(referenceMeta, geminiPlan);
+          }
         } catch (error) {
-          toast(`Gemini falló en ref ${i + 1}: ${getErrorMessage(error, 'seguimos con análisis local')}`, 'error');
+          toast(`Gemini falló en ${template.name}: ${getErrorMessage(error, 'seguimos con análisis local')}`, 'error');
         }
       }
 
-      const fallbackTemplate = getReferenceTemplate(reference, referenceIndex >= 0 ? referenceIndex : i);
-      const template = geminiPlan?.styleKey ? getTemplateByKey(geminiPlan.styleKey) || fallbackTemplate : fallbackTemplate;
       const profile = getReferenceEditProfile(template, referenceMeta, i);
       if (geminiPlan?.profileName) profile.name = geminiPlan.profileName;
       const textConfig = mergeTextConfigWithGemini(baseTextConfig, geminiPlan);
-      const overlayFilters = buildReferenceOverlayFilters(referenceMeta, textConfig);
-      if (overlayFilters.length > 0) {
-        await ensureFFmpegFont(runtime);
-      }
-      const referenceSegments = buildReferenceDrivenSegments(baseDuration, referenceMeta, i, [{ start: 0, end: baseDuration }]);
-      const rhythmSegments = buildRhythmSegments(baseDuration, referenceMeta, i);
+      const overlayFilters = buildTemplateOverlayFilters(template, referenceMeta, textConfig, i);
+      const referenceSegments = reference
+        ? buildReferenceDrivenSegments(baseDuration, referenceMeta, i, [{ start: 0, end: baseDuration }])
+        : [];
+      const rhythmSegments = buildTemplateDrivenSegments(baseDuration, template, referenceMeta, i);
       const useReferenceCuts = referenceSegments.length > 1;
       const segments = useReferenceCuts ? referenceSegments : rhythmSegments;
+      const audioFilter = getTemplateAudioFilter(template, hasAudio);
       const editStats = {
         hasAudio,
         referenceCutCount: useReferenceCuts ? Math.max(0, referenceSegments.length - 1) : 0,
@@ -1933,21 +2405,22 @@ async function generateFormats() {
         segmentCount: segments.length,
         mode: useReferenceCuts ? 'reference' : segments.length > 1 ? 'rhythm' : 'style',
       };
-      const resultId = renderPendingResult(reference, template, i, profile, editStats, geminiPlan);
-      const outputName = `${safeFilePart(baseVideo.name)}-${safeFilePart(reference.name)}-editado.mp4`;
+      const resultId = renderPendingResult(template, reference, i, profile, editStats, geminiPlan);
+      const outputName = `${safeFilePart(baseVideo.name)}-${safeFilePart(template.key)}-instagram.mp4`;
       state.ffmpeg.activeStatusId = `${resultId}_status`;
       const cutLabel = editStats.mode === 'reference'
         ? `aplicando ${editStats.referenceCutCount} corte(s) del ejemplar`
         : editStats.mode === 'rhythm'
           ? `aplicando ${editStats.rhythmCutCount} corte(s) de ritmo`
           : 'aplicando estilo visual fuerte';
-      setRenderStatus(state.ffmpeg.activeStatusId, `Editando referencia ${i + 1} de ${selectedReferences.length}: ${cutLabel}...`);
+      setRenderStatus(state.ffmpeg.activeStatusId, `Editando formato ${i + 1} de ${selectedTemplates.length}: ${cutLabel}...`);
 
       const command = ffmpegSmartEditCommand(inputName, outputName, {
         profile,
         hasAudio,
         segments,
         overlayFilters,
+        audioFilter,
       });
       await execFFmpegChecked(ffmpeg, command);
       const data = await ffmpeg.readFile(outputName);
@@ -1955,8 +2428,8 @@ async function generateFormats() {
       const generated = {
         id: `gen_${Date.now()}_${i}`,
         template: template.key,
-        name: reference.name,
-        referenceId: reference.id,
+        name: template.name,
+        referenceId: reference?.id || '',
         url: URL.createObjectURL(blob),
         file: new File([blob], outputName, { type: 'video/mp4' }),
       };
@@ -1968,7 +2441,7 @@ async function generateFormats() {
         type: 'format',
         template: template.key,
         filename: baseVideo.name,
-        referenceFilename: reference.name,
+        referenceFilename: reference?.name || '',
         editProfile: profile.name,
         ai: geminiPlan ? 'Gemini Omni' : 'Local',
         status: 'ready',
@@ -1982,7 +2455,7 @@ async function generateFormats() {
     await ffmpeg.deleteFile(inputName).catch(() => {});
 
     saveHistory();
-    toast(`${selectedReferences.length} referencia(s) procesada(s) en tu navegador`, 'success');
+    toast(`${selectedTemplates.length} formato(s) de Instagram procesado(s) en tu navegador`, 'success');
   } catch (error) {
     state.ffmpeg.activeStatusId = null;
     const message = getErrorMessage(error, 'No se pudo preparar el editor.');
@@ -1990,7 +2463,7 @@ async function generateFormats() {
     toast(message, 'error');
   } finally {
     btn.disabled = false;
-    btn.innerHTML = `<span>◧</span> Generar <span id="gen-count">${state.selectedReferences.size}</span> edición(es)`;
+    btn.innerHTML = `<span>◧</span> Generar <span id="gen-count">${state.selectedTemplates.size}</span> formato(s)`;
   }
 }
 

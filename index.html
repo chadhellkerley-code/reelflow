@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="tiktok-developers-site-verification" content="5kus0LqkVvlvbr1XZADupXbVpm8rYBd0" />
   <title>ReelFlow — Panel de Publicación</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0b12'/%3E%3Cpath d='M25 18l22 14-22 14V18z' fill='%237c6dfa'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
@@ -173,7 +174,7 @@
               </button>
               <button class="quick-btn" onclick="navigateTo('editor')">
                 <span class="quick-icon">◧</span>
-                <span class="quick-label">Editar con referencia</span>
+                <span class="quick-label">Editar con formatos</span>
               </button>
               <button class="quick-btn" onclick="navigateTo('history')">
                 <span class="quick-icon">◫</span>
@@ -412,7 +413,7 @@
           <div class="page-header">
             <div>
               <h1 class="page-title">Editor de Videos</h1>
-              <p class="page-subtitle">Subí tu video crudo, elegí referencias y generá ediciones con recortes y ritmo visual.</p>
+              <p class="page-subtitle">Subí tu video crudo, elegí formatos de Instagram y generá videos editados con overlays, textos, transiciones y audio.</p>
             </div>
           </div>
 
@@ -438,36 +439,55 @@
               <div class="editor-videos-list" id="editor-videos-list"></div>
             </div>
 
-            <!-- Step 2: Reference videos -->
+            <!-- Step 2: Instagram formats -->
             <div class="editor-step" id="editor-step-2">
               <div class="step-header">
                 <div class="step-number">02</div>
                 <div>
-                  <h3>Elegí videos de referencia</h3>
-                  <p>Agregá hasta 15 ejemplos para inspirar ritmo, look y movimiento.</p>
+                  <h3>Elegí formatos de Instagram</h3>
+                  <p>Seleccioná uno o varios modelos. ReelFlow devuelve un video editado por cada formato elegido.</p>
                 </div>
                 <div class="step-actions">
-                  <button class="btn btn-ghost btn-sm" onclick="selectAllReferences()">Seleccionar todos</button>
-                  <button class="btn btn-ghost btn-sm" onclick="clearReferences()">Limpiar</button>
+                  <button class="btn btn-ghost btn-sm" onclick="selectAllFormats()">Seleccionar todos</button>
+                  <button class="btn btn-ghost btn-sm" onclick="clearFormats()">Limpiar</button>
                 </div>
               </div>
 
-              <div class="upload-zone upload-zone-editor" id="reference-upload-zone" onclick="document.getElementById('reference-video-input').click()">
-                <div class="upload-icon">▣</div>
-                <div class="upload-text">
-                  <strong>Agregá videos de referencia</strong>
-                  <span>o arrastralos acá</span>
-                  <span class="upload-hint">Hasta 15 ejemplos</span>
-                </div>
-                <input type="file" id="reference-video-input" accept="video/*" multiple hidden onchange="handleReferenceUpload(event)" />
-              </div>
-
-              <div class="reference-videos-grid" id="reference-videos-grid">
-                <div class="empty-reference-state">Agregá videos de referencia para inspirar cortes, ritmo y estilo.</div>
-              </div>
+              <div class="templates-grid" id="instagram-format-grid"></div>
 
               <div class="templates-footer">
-                <div class="selected-count"><span id="selected-references-count">0</span> de <span id="total-references-count">0</span> referencias seleccionadas</div>
+                <div class="selected-count"><span id="selected-formats-count">0</span> de <span id="total-formats-count">20</span> formatos seleccionados</div>
+              </div>
+
+              <div class="reference-panel">
+                <div class="reference-panel-header">
+                  <div>
+                    <h4>Referencias opcionales</h4>
+                    <p>Si agregás ejemplos, se usan para copiar ritmo, cortes y zonas de texto. Si no, cada formato usa su propio estilo.</p>
+                  </div>
+                  <div class="step-actions">
+                    <button class="btn btn-ghost btn-sm" onclick="selectAllReferences()">Seleccionar refs</button>
+                    <button class="btn btn-ghost btn-sm" onclick="clearReferences()">Limpiar refs</button>
+                  </div>
+                </div>
+
+                <div class="upload-zone upload-zone-editor" id="reference-upload-zone" onclick="document.getElementById('reference-video-input').click()">
+                  <div class="upload-icon">▣</div>
+                  <div class="upload-text">
+                    <strong>Agregá videos de referencia</strong>
+                    <span>o arrastralos acá</span>
+                    <span class="upload-hint">Hasta 15 ejemplos</span>
+                  </div>
+                  <input type="file" id="reference-video-input" accept="video/*" multiple hidden onchange="handleReferenceUpload(event)" />
+                </div>
+
+                <div class="reference-videos-grid" id="reference-videos-grid">
+                  <div class="empty-reference-state">Agregá videos de referencia para inspirar cortes, ritmo y estilo.</div>
+                </div>
+
+                <div class="templates-footer">
+                  <div class="selected-count"><span id="selected-references-count">0</span> de <span id="total-references-count">0</span> referencias seleccionadas</div>
+                </div>
               </div>
             </div>
 
@@ -477,7 +497,7 @@
                 <div class="step-number">03</div>
                 <div>
                   <h3>Personalizar y generar</h3>
-                  <p>Configurá textos opcionales y prepará una edición por cada referencia elegida.</p>
+                  <p>Configurá textos opcionales y prepará una edición por cada formato elegido.</p>
                 </div>
               </div>
               <div class="editor-config">
@@ -503,7 +523,7 @@
                   Gemini Omni se activa desde Configuración. Si no hay API key, ReelFlow usa el análisis local.
                 </div>
                 <button class="btn btn-primary btn-lg btn-full" id="generate-btn" onclick="generateFormats()">
-                  <span>◧</span> Generar <span id="gen-count">0</span> edición(es)
+                  <span>◧</span> Generar <span id="gen-count">0</span> formato(s)
                 </button>
               </div>
             </div>
@@ -514,7 +534,7 @@
                 <div class="step-number">04</div>
                 <div>
                   <h3>Resultados</h3>
-                  <p>Referencias preparadas para análisis y render.</p>
+                  <p>Videos editados listos para descargar o publicar.</p>
                 </div>
               </div>
               <div class="generated-results" id="generated-results"></div>
