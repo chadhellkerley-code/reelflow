@@ -490,11 +490,13 @@ async function publishReel() {
 async function uploadVideoToStorage(file, statusEl) {
   if (!file) throw new Error('Seleccioná un video primero.');
 
+  statusEl.textContent = 'Verificando configuración de Blob...';
   const status = await fetch('/api/blob/status').then(res => res.json()).catch(() => null);
   if (!status?.configured) {
     throw new Error('Falta configurar BLOB_READ_WRITE_TOKEN en Vercel Blob.');
   }
 
+  statusEl.textContent = 'Cargando cliente de subida...';
   const { upload } = await import('https://esm.sh/@vercel/blob@2.4.0/client');
   const pathname = `reels/${Date.now()}-${file.name.replace(/[^a-z0-9._-]/gi, '-')}`;
   const abortController = new AbortController();
@@ -502,11 +504,13 @@ async function uploadVideoToStorage(file, statusEl) {
   let blob;
 
   try {
+    statusEl.textContent = 'Solicitando token temporal de subida...';
     blob = await upload(pathname, file, {
       access: 'public',
       contentType: file.type || 'video/mp4',
       handleUploadUrl: '/api/blob/upload',
       multipart: true,
+      clientPayload: JSON.stringify({ filename: file.name, size: file.size, type: file.type }),
       abortSignal: abortController.signal,
       onUploadProgress: ({ percentage }) => {
         const progress = Math.round(percentage);
