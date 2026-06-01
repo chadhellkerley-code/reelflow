@@ -18,12 +18,17 @@ export function generatePlan(analysisResult) {
       second,
       action: 'show_text',
       text: question,
-      position: 'center',
+      position: 'cta',
       style: 'engagement_question',
+      animation: 'question_pop',
       duration: 3,
     });
   }
 
-  return { ...plan, format: 'engagement_closer', timeline: sortTimeline(plan.timeline) };
+  return {
+    ...plan,
+    format: 'engagement_closer',
+    composition: { look: 'comment_punch', safeText: true, commentCloser: true },
+    timeline: sortTimeline(plan.timeline),
+  };
 }
-

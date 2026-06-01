@@ -4,6 +4,8 @@ import { addSimpleSubtitles, getDuration, getHookText, getIdeas, roundTime, sort
 export function generatePlan(analysisResult) {
   const duration = getDuration(analysisResult);
   const timeline = [
+    { second: 0, action: 'visual_style', look: 'dark_cinematic' },
+    { second: 0, action: 'darken', opacity: 0.42, duration: Math.min(2, duration || 2) },
     { second: 0, action: 'background', type: 'blur', duration: Math.min(2, duration || 2) },
     {
       second: 0,
@@ -11,6 +13,7 @@ export function generatePlan(analysisResult) {
       text: getHookText(analysisResult) || 'Mira esto',
       position: 'center',
       style: 'hook_large',
+      animation: 'cinematic_reveal',
       duration: Math.min(2, duration || 2),
     },
     { second: Math.min(2, duration || 2), action: 'cut', type: 'abrupt' },
@@ -25,10 +28,15 @@ export function generatePlan(analysisResult) {
       text: idea.text,
       position: 'top',
       style: 'idea_summary',
+      animation: 'slide_down',
       duration: Math.min(2.4, Math.max(1, idea.end - idea.start)),
     });
   }
 
-  return { format: 'hook_reveal', duration, timeline: sortTimeline(timeline) };
+  return {
+    format: 'hook_reveal',
+    duration,
+    composition: { look: 'dark_cinematic', safeText: true, introCard: true },
+    timeline: sortTimeline(timeline),
+  };
 }
-

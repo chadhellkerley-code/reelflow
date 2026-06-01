@@ -9,6 +9,7 @@ export function generatePlan(analysisResult) {
     ? analysisResult.cta
     : analysisResult?.cta?.text || '';
   const timeline = [
+    { second: 0, action: 'visual_style', look: 'luxury_minimal' },
     { second: 0, action: 'zoom', value: 1.06, duration },
     {
       second: 0,
@@ -16,6 +17,7 @@ export function generatePlan(analysisResult) {
       text: getHookText(analysisResult) || 'Mira esto',
       position: 'center',
       style: 'minimal_hook',
+      animation: 'fade_luxury',
       duration: Math.min(2.4, duration || 2.4),
     },
   ];
@@ -27,6 +29,7 @@ export function generatePlan(analysisResult) {
       text: centralIdea.text,
       position: 'center',
       style: 'minimal_idea',
+      animation: 'fade_luxury',
       duration: Math.min(3, Math.max(1.5, centralIdea.end - centralIdea.start)),
     });
   }
@@ -36,12 +39,17 @@ export function generatePlan(analysisResult) {
       second: roundTime(Math.max(0, duration - 3)),
       action: 'show_text',
       text: ctaText,
-      position: 'center',
+      position: 'cta',
       style: 'minimal_cta',
+      animation: 'fade_luxury',
       duration: Math.min(3, duration),
     });
   }
 
-  return { format: 'minimal_text', duration, timeline: sortTimeline(timeline) };
+  return {
+    format: 'minimal_text',
+    duration,
+    composition: { look: 'luxury_minimal', safeText: true, sparseText: true },
+    timeline: sortTimeline(timeline),
+  };
 }
-

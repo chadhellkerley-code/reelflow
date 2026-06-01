@@ -4,6 +4,7 @@ import { getDuration, getIdeas, roundTime, sortTimeline } from './_helpers.js';
 export function generatePlan(analysisResult) {
   const duration = getDuration(analysisResult);
   const timeline = [
+    { second: 0, action: 'visual_style', look: 'bw_documentary' },
     { second: 0, action: 'music_background', type: 'tense', volume: 0.15 },
     { second: 0, action: 'zoom', value: 1.0 },
   ];
@@ -23,10 +24,15 @@ export function generatePlan(analysisResult) {
       text: keyword,
       position: 'lower_third',
       style: 'documentary_keyword',
+      animation: 'lower_third',
       duration: 1.8,
     });
   });
 
-  return { format: 'documentary_cuts', duration, timeline: sortTimeline(timeline) };
+  return {
+    format: 'documentary_cuts',
+    duration,
+    composition: { look: 'bw_documentary', safeText: true, lowerThird: true },
+    timeline: sortTimeline(timeline),
+  };
 }
-

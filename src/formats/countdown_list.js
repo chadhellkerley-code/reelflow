@@ -3,7 +3,10 @@ import { getDuration, getIdeas, roundTime, sortTimeline } from './_helpers.js';
 // Builds a numbered list plan. It is intended for analysisResult.content_type === "list".
 export function generatePlan(analysisResult) {
   const duration = getDuration(analysisResult);
-  const timeline = [{ second: 0, action: 'zoom', value: 1.0 }];
+  const timeline = [
+    { second: 0, action: 'visual_style', look: 'clean_punch' },
+    { second: 0, action: 'zoom', value: 1.03, duration },
+  ];
   const ideas = getIdeas(analysisResult);
 
   ideas.forEach((idea, index) => {
@@ -17,6 +20,7 @@ export function generatePlan(analysisResult) {
       text: String(index + 1),
       position: 'center',
       style: 'countdown_number',
+      animation: 'number_punch',
       duration: 0.65,
     });
     timeline.push({
@@ -25,10 +29,15 @@ export function generatePlan(analysisResult) {
       text: idea.text,
       position: 'bottom',
       style: 'list_point',
+      animation: 'slide_up',
       duration: Math.max(1, roundTime(idea.end - idea.start)),
     });
   });
 
-  return { format: 'countdown_list', duration, timeline: sortTimeline(timeline) };
+  return {
+    format: 'countdown_list',
+    duration,
+    composition: { look: 'clean_punch', safeText: true, transitionStyle: 'flash_number' },
+    timeline: sortTimeline(timeline),
+  };
 }
-

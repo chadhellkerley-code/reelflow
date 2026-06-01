@@ -1,3 +1,9 @@
+import { getSafeZone, getTextBackplate, getTextBlockY } from './layoutEngine.js';
+import { fitTextToZone } from './textFitEngine.js';
+import { getAnimatedY } from './captionAnimator.js';
+import { buildAccentMotionFilters, buildTransitionFilters } from './motionPresets.js';
+import { getFormatVisualStyle, getPlanGradeFilters } from './styleEngine.js';
+
 const FFMPEG_CORE_VERSION = '0.12.10';
 const OUTPUT_WIDTH = 1080;
 const OUTPUT_HEIGHT = 1920;
@@ -25,24 +31,26 @@ function formatSeconds(value) {
 }
 
 // Maps timeline text styles to concrete drawtext visual values.
-function styleForAction(action) {
+function styleForAction(action, plan) {
+  const visualStyle = getFormatVisualStyle(plan?.format);
+  const palette = visualStyle.textPalette || {};
   const styles = {
-    kinetic_keyword: { size: 104, color: 'yellow', border: 7 },
-    kinetic_default: { size: 78, color: 'white', border: 6 },
-    hook_large: { size: 78, color: 'white', border: 6 },
-    subtitle_simple: { size: 52, color: 'white', border: 5 },
-    idea_summary: { size: 48, color: 'white', border: 4 },
-    countdown_number: { size: 220, color: 'white', border: 9 },
-    list_point: { size: 58, color: 'yellow', border: 5 },
-    documentary_keyword: { size: 44, color: 'white', border: 4 },
-    context_panel: { size: 52, color: 'white', border: 3 },
-    minimal_hook: { size: 70, color: 'white', border: 5 },
-    minimal_idea: { size: 58, color: 'white', border: 4 },
-    minimal_cta: { size: 62, color: 'yellow', border: 5 },
-    engagement_question: { size: 66, color: 'white', border: 6 },
-    pov_hook: { size: 64, color: 'white', border: 5 },
+    kinetic_keyword: { minSize: 58, maxSize: 118, color: palette.accent || 'yellow', border: 8, maxLines: 1, uppercase: true, backplate: true, backplateOpacity: 0.16 },
+    kinetic_default: { minSize: 46, maxSize: 82, color: palette.primary || 'white', border: 6, maxLines: 1, uppercase: true, backplate: false },
+    hook_large: { minSize: 52, maxSize: 86, color: palette.primary || 'white', border: 7, maxLines: 3, uppercase: true, backplate: true, backplateOpacity: 0.34 },
+    subtitle_simple: { minSize: 38, maxSize: 54, color: palette.primary || 'white', border: 5, maxLines: 2, uppercase: false, backplate: true, backplateOpacity: 0.28 },
+    idea_summary: { minSize: 34, maxSize: 48, color: palette.primary || 'white', border: 4, maxLines: 2, uppercase: false, backplate: true, backplateOpacity: 0.24 },
+    countdown_number: { minSize: 120, maxSize: 230, color: palette.primary || 'white', border: 10, maxLines: 1, uppercase: true, backplate: false },
+    list_point: { minSize: 42, maxSize: 62, color: palette.accent || 'yellow', border: 5, maxLines: 3, uppercase: true, backplate: true, backplateOpacity: 0.34 },
+    documentary_keyword: { minSize: 32, maxSize: 46, color: palette.accent || 'white', border: 3, maxLines: 1, uppercase: true, backplate: true, backplateOpacity: 0.42 },
+    context_panel: { minSize: 38, maxSize: 56, color: palette.primary || 'white', border: 2, maxLines: 4, uppercase: false, backplate: false },
+    minimal_hook: { minSize: 44, maxSize: 76, color: palette.primary || 'white', border: 4, maxLines: 3, uppercase: false, backplate: false },
+    minimal_idea: { minSize: 38, maxSize: 62, color: palette.primary || 'white', border: 3, maxLines: 3, uppercase: false, backplate: true, backplateOpacity: 0.18 },
+    minimal_cta: { minSize: 42, maxSize: 66, color: palette.accent || 'white', border: 4, maxLines: 3, uppercase: false, backplate: true, backplateOpacity: 0.26 },
+    engagement_question: { minSize: 46, maxSize: 72, color: palette.primary || 'white', border: 6, maxLines: 3, uppercase: false, backplate: true, backplateOpacity: 0.28 },
+    pov_hook: { minSize: 46, maxSize: 72, color: palette.primary || 'white', border: 6, maxLines: 3, uppercase: true, backplate: true, backplateOpacity: 0.3 },
   };
-  return styles[action.style] || { size: 54, color: 'white', border: 4 };
+  return styles[action.style] || { minSize: 34, maxSize: 54, color: palette.primary || 'white', border: 4, maxLines: 2, uppercase: false, backplate: true, backplateOpacity: 0.24 };
 }
 
 // Converts a semantic text position into a drawtext y expression.
@@ -57,13 +65,84 @@ function yForPosition(position) {
   return positions[position] || positions.center;
 }
 
-// Converts a show_text timeline action into one drawtext filter.
-function buildDrawText(action) {
-  if (!action.text) return '';
-  const style = styleForAction(action);
+function buildBackplate(action, fit, style) {
   const start = formatSeconds(action.second);
   const end = formatSeconds(Number(action.second || 0) + Number(action.duration || 1));
-  return `drawtext=fontfile=${FONT_FILE}:text='${escapeDrawText(action.text)}':x=(w-text_w)/2:y=${yForPosition(action.position)}:fontsize=${style.size}:fontcolor=${style.color}:borderw=${style.border}:bordercolor=black@0.75:enable='between(t,${start},${end})'`;
+  const rect = getTextBackplate(action.position, action.position === 'panel' ? 0 : 22);
+  const color = action.position === 'panel'
+    ? `black@${style.backplateOpacity ?? 0.18}`
+    : `black@${style.backplateOpacity ?? 0.24}`;
+
+  return `drawbox=x=${rect.x}:y=${rect.y}:w=${rect.width}:h=${rect.height}:color=${color}:t=fill:enable='between(t,${start},${end})'`;
+}
+
+function buildFormatDesignOverlays(plan) {
+  const format = plan?.format || '';
+  const overlays = [];
+
+  if (format === 'hook_reveal') {
+    overlays.push('drawbox=x=0:y=0:w=1080:h=1920:color=black@0.28:t=fill:enable=lt(t\\,2)');
+    overlays.push('drawbox=x=96:y=500:w=888:h=2:color=white@0.42:t=fill:enable=lt(t\\,2)');
+    overlays.push('drawbox=x=96:y=1026:w=888:h=2:color=white@0.24:t=fill:enable=lt(t\\,2)');
+  }
+
+  if (format === 'documentary_cuts') {
+    overlays.push('drawbox=x=64:y=122:w=952:h=2:color=white@0.28:t=fill');
+    overlays.push('drawbox=x=64:y=1796:w=952:h=2:color=white@0.18:t=fill');
+    overlays.push('drawbox=x=0:y=0:w=1080:h=1920:color=black@0.05:t=fill:enable=lt(mod(t\\,0.5)\\,0.04)');
+  }
+
+  if (format === 'minimal_text') {
+    overlays.push('drawbox=x=56:y=92:w=968:h=1736:color=white@0.16:t=2');
+    overlays.push('drawbox=x=96:y=145:w=180:h=2:color=white@0.38:t=fill');
+    overlays.push('drawbox=x=804:y=1774:w=180:h=2:color=white@0.22:t=fill');
+  }
+
+  if (format === 'countdown_list') {
+    overlays.push('drawbox=x=0:y=0:w=1080:h=1920:color=black@0.08:t=fill');
+    overlays.push('drawbox=x=88:y=1200:w=760:h=250:color=black@0.32:t=fill');
+  }
+
+  if (format === 'pov_style') {
+    overlays.push('drawbox=x=72:y=196:w=936:h=116:color=black@0.34:t=fill:enable=lt(t\\,2)');
+    overlays.push('drawbox=x=72:y=316:w=936:h=3:color=white@0.42:t=fill:enable=lt(t\\,2)');
+  }
+
+  return overlays;
+}
+
+function buildTextLine(action, line, index, fit, style) {
+  const start = formatSeconds(action.second);
+  const end = formatSeconds(Number(action.second || 0) + Number(action.duration || 1));
+  const zone = getSafeZone(action.position);
+  const lineStep = Math.round(fit.fontSize * fit.lineHeight);
+  const baseY = getTextBlockY(action.position, fit.lines.length, fit.fontSize, fit.lineHeight);
+  const y = getAnimatedY(baseY, { ...action, lineStep }, index, formatSeconds);
+  const x = `${zone.x}+((${zone.width})-text_w)/2`;
+
+  return `drawtext=fontfile=${FONT_FILE}:text='${escapeDrawText(line)}':x=${x}:y=${y}:fontsize=${fit.fontSize}:fontcolor=${style.color}:borderw=${style.border}:bordercolor=black@0.78:enable='between(t,${start},${end})'`;
+}
+
+// Converts a show_text timeline action into safe, auto-fitted drawtext filters.
+function buildDrawText(action, plan) {
+  if (!action.text) return [];
+  const style = styleForAction(action, plan);
+  const fit = fitTextToZone(action.text, {
+    position: action.position || 'center',
+    minSize: style.minSize,
+    maxSize: style.maxSize,
+    maxLines: style.maxLines,
+    uppercase: style.uppercase,
+    lineHeight: 1.15,
+  });
+  const filters = [];
+
+  if (style.backplate) filters.push(buildBackplate(action, fit, style));
+  fit.lines.forEach((line, index) => {
+    filters.push(buildTextLine(action, line, index, fit, style));
+  });
+
+  return filters;
 }
 
 // Builds base scaling, cropping, zoom approximation, and split layout filters.
@@ -78,10 +157,13 @@ function buildBaseFilters(plan) {
     `scale=${scaleWidth}:${scaleHeight}:force_original_aspect_ratio=increase`,
     `crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}`,
     'setsar=1',
+    ...getPlanGradeFilters(plan),
+    ...buildFormatDesignOverlays(plan),
   ];
 
   if (hasSplit) {
-    filters.push('drawbox=x=0:y=1152:w=1080:h=768:color=black@0.78:t=fill');
+    filters.push('drawbox=x=0:y=1138:w=1080:h=782:color=black@0.82:t=fill');
+    filters.push('drawbox=x=76:y=1194:w=928:h=2:color=white@0.34:t=fill');
   }
 
   return filters;
@@ -93,7 +175,7 @@ function buildOverlayFilters(plan) {
 
   for (const action of plan.timeline || []) {
     if (action.action === 'show_text') {
-      filters.push(buildDrawText(action));
+      filters.push(...buildDrawText(action, plan));
     }
     if (action.action === 'darken') {
       const start = formatSeconds(action.second);
@@ -106,14 +188,13 @@ function buildOverlayFilters(plan) {
       filters.push(`boxblur=12:enable='between(t,${start},${end})'`);
     }
     if (action.action === 'cut') {
-      const start = formatSeconds(action.second);
-      const end = formatSeconds(Number(action.second || 0) + 0.06);
-      filters.push(`drawbox=x=0:y=0:w=iw:h=ih:color=white@0.12:t=fill:enable='between(t,${start},${end})'`);
+      filters.push(...buildTransitionFilters(action, formatSeconds));
     }
     if (action.action === 'panel_transition') {
-      const start = formatSeconds(action.second);
-      const end = formatSeconds(Number(action.second || 0) + 0.18);
-      filters.push(`drawbox=x=0:y=1152:w=1080:h=768:color=white@0.12:t=fill:enable='between(t,${start},${end})'`);
+      filters.push(...buildAccentMotionFilters(action, formatSeconds));
+    }
+    if (action.action === 'zoom' && Number(action.duration || 0) <= 0.5) {
+      filters.push(...buildAccentMotionFilters(action, formatSeconds));
     }
   }
 
