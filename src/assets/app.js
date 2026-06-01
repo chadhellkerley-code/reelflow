@@ -32,8 +32,6 @@ const INSTAGRAM_APP_ID = '1428803625601557';
 const INSTAGRAM_SCOPES = 'instagram_business_basic,instagram_business_content_publish';
 const TIKTOK_CLIENT_KEY = 'sbaw89mga3yconmz26';
 const TIKTOK_SCOPES = 'user.info.basic,video.publish';
-const FFMPEG_VERSION = '0.12.15';
-const FFMPEG_UTIL_VERSION = '0.12.2';
 const FFMPEG_CORE_VERSION = '0.12.10';
 
 const LOCAL_VIDEO_TEMPLATES = [
@@ -962,8 +960,8 @@ async function loadFFmpeg(statusEl) {
 
   try {
     const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
-      import(`https://esm.sh/@ffmpeg/ffmpeg@${FFMPEG_VERSION}`),
-      import(`https://esm.sh/@ffmpeg/util@${FFMPEG_UTIL_VERSION}`),
+      import('/vendor/ffmpeg/ffmpeg/index.js'),
+      import('/vendor/ffmpeg/util/index.js'),
     ]);
 
     const ffmpeg = new FFmpeg();
@@ -976,6 +974,7 @@ async function loadFFmpeg(statusEl) {
     });
 
     await ffmpeg.load({
+      classWorkerURL: '/vendor/ffmpeg/ffmpeg/worker.js',
       coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
       wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
     });
