@@ -740,6 +740,12 @@ async function publishTikTokReel(account, payload, statusEl) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+function getErrorMessage(error, fallback = 'Ocurrió un error inesperado.') {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim()) return error;
+  return fallback;
+}
+
 // ═══════════════════════════════════════════════════════════
 //  EDITOR
 // ═══════════════════════════════════════════════════════════
@@ -965,7 +971,7 @@ async function loadFFmpeg(statusEl) {
     ]);
 
     const ffmpeg = new FFmpeg();
-    const baseURL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${FFMPEG_CORE_VERSION}/dist/umd`;
+    const baseURL = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${FFMPEG_CORE_VERSION}/dist/esm`;
 
     ffmpeg.on('progress', ({ progress }) => {
       if (!state.ffmpeg.activeStatusId) return;
@@ -1098,8 +1104,9 @@ async function generateFormats() {
     toast(`${selectedReferences.length} referencia(s) procesada(s) en tu navegador`, 'success');
   } catch (error) {
     state.ffmpeg.activeStatusId = null;
-    results.innerHTML = `<div class="render-status error">${escapeHtml(error.message || 'No se pudo preparar el editor.')}</div>`;
-    toast(error.message || 'No se pudo procesar el video', 'error');
+    const message = getErrorMessage(error, 'No se pudo preparar el editor.');
+    results.innerHTML = `<div class="render-status error">${escapeHtml(message)}</div>`;
+    toast(message, 'error');
   } finally {
     btn.disabled = false;
     btn.innerHTML = `<span>◧</span> Generar <span id="gen-count">${state.selectedReferences.size}</span> modelo(s)`;
