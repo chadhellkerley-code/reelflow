@@ -89,6 +89,12 @@ La ruta `api/blob/upload.js` habilita uploads directos de video a Vercel Blob:
 /api/blob/upload
 ```
 
+Para usar uploads, el proyecto de Vercel necesita la variable:
+
+```env
+BLOB_READ_WRITE_TOKEN=
+```
+
 ## Stack recomendado para el backend
 
 - **Runtime:** Node.js + Express

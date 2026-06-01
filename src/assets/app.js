@@ -490,6 +490,11 @@ async function publishReel() {
 async function uploadVideoToStorage(file, statusEl) {
   if (!file) throw new Error('Seleccioná un video primero.');
 
+  const status = await fetch('/api/blob/status').then(res => res.json()).catch(() => null);
+  if (!status?.configured) {
+    throw new Error('Falta configurar BLOB_READ_WRITE_TOKEN en Vercel Blob.');
+  }
+
   const { upload } = await import('https://esm.sh/@vercel/blob@2.4.0/client');
   const pathname = `reels/${Date.now()}-${file.name.replace(/[^a-z0-9._-]/gi, '-')}`;
   const blob = await upload(pathname, file, {
