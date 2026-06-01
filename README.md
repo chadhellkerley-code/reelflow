@@ -48,6 +48,7 @@ BACKEND_URL=https://reelflow-topaz.vercel.app
 ```
 Instagram: https://reelflow-topaz.vercel.app/auth/instagram/callback
 TikTok:    https://reelflow-topaz.vercel.app/auth/tiktok/callback
+Data deletion: https://reelflow-topaz.vercel.app/eliminacion-datos.html
 ```
 
 ## Uso sin backend
