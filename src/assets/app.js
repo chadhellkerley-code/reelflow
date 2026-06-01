@@ -497,18 +497,32 @@ async function uploadVideoToStorage(file, statusEl) {
 
   const { upload } = await import('https://esm.sh/@vercel/blob@2.4.0/client');
   const pathname = `reels/${Date.now()}-${file.name.replace(/[^a-z0-9._-]/gi, '-')}`;
-  const blob = await upload(pathname, file, {
-    access: 'public',
-    contentType: file.type || 'video/mp4',
-    handleUploadUrl: '/api/blob/upload',
-    multipart: true,
-    onUploadProgress: ({ percentage }) => {
-      const progress = Math.round(percentage);
-      statusEl.textContent = progress >= 100
-        ? 'Finalizando subida del video...'
-        : `Subiendo video a storage... ${progress}%`;
-    },
-  });
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), 180000);
+  let blob;
+
+  try {
+    blob = await upload(pathname, file, {
+      access: 'public',
+      contentType: file.type || 'video/mp4',
+      handleUploadUrl: '/api/blob/upload',
+      multipart: true,
+      abortSignal: abortController.signal,
+      onUploadProgress: ({ percentage }) => {
+        const progress = Math.round(percentage);
+        statusEl.textContent = progress >= 100
+          ? 'Finalizando subida del video...'
+          : `Subiendo video a storage... ${progress}%`;
+      },
+    });
+  } catch (error) {
+    if (abortController.signal.aborted) {
+      throw new Error('La subida quedó trabada. Revisá que el Blob Store sea público y esté conectado al proyecto.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!blob?.url) throw new Error('No se pudo obtener la URL pública del video.');
   statusEl.textContent = 'Video subido. Preparando publicación en Instagram...';
