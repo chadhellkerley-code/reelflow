@@ -369,6 +369,7 @@ function handleVideoUpload(event) {
 
   const size = (file.size / (1024 * 1024)).toFixed(1);
   document.getElementById('video-info').textContent = `${file.name} · ${size} MB`;
+  document.getElementById('video-public-url').value = '';
 }
 
 function clearVideo() {
@@ -418,11 +419,12 @@ function toggleAccountSelect(id, el) {
 }
 
 async function publishReel() {
-  const videoUrl = document.getElementById('video-public-url').value.trim();
+  const videoUrlInput = document.getElementById('video-public-url');
+  let videoUrl = videoUrlInput.value.trim();
   const caption = document.getElementById('post-caption').value.trim();
   const thumbOffset = Number(document.getElementById('cover-time').value || 0) * 1000;
 
-  if (!videoUrl) { toast('Pegá una URL pública del video', 'error'); return; }
+  if (!videoUrl && !state.selectedVideo) { toast('Seleccioná un video o pegá una URL pública', 'error'); return; }
   if (state.selectedAccounts.size === 0) { toast('Seleccioná al menos una cuenta', 'error'); return; }
   if (state.pubType === 'draft') { toast('Instagram no permite crear drafts por API en este flujo', 'error'); return; }
 
@@ -431,12 +433,17 @@ async function publishReel() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Publicando...';
   status.className = 'publish-status loading';
-  status.textContent = 'Creando contenedor de Instagram...';
+  status.textContent = videoUrl ? 'Creando contenedor de Instagram...' : 'Subiendo video a storage...';
 
   const accounts = state.accounts.filter(a => state.selectedAccounts.has(a.id) && a.platform === 'ig');
   const results = [];
 
   try {
+    if (!videoUrl) {
+      videoUrl = await uploadVideoToStorage(state.selectedVideo, status);
+      videoUrlInput.value = videoUrl;
+    }
+
     for (const acc of accounts) {
       status.textContent = `Publicando en ${acc.username}...`;
       const response = await fetch('/api/instagram/publish', {
@@ -478,6 +485,23 @@ async function publishReel() {
     btn.disabled = false;
     btn.innerHTML = '<span>◆</span> Publicar Reel';
   }
+}
+
+async function uploadVideoToStorage(file, statusEl) {
+  if (!file) throw new Error('Seleccioná un video primero.');
+
+  const { upload } = await import('https://esm.sh/@vercel/blob@2.4.0/client');
+  const pathname = `reels/${Date.now()}-${file.name.replace(/[^a-z0-9._-]/gi, '-')}`;
+  const blob = await upload(pathname, file, {
+    access: 'public',
+    handleUploadUrl: '/api/blob/upload',
+    onUploadProgress: ({ percentage }) => {
+      statusEl.textContent = `Subiendo video a storage... ${Math.round(percentage)}%`;
+    },
+  });
+
+  if (!blob?.url) throw new Error('No se pudo obtener la URL pública del video.');
+  return blob.url;
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }

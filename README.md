@@ -83,6 +83,12 @@ La ruta `api/instagram/publish.js` publica un Reel desde una URL pública de vid
 /api/instagram/publish
 ```
 
+La ruta `api/blob/upload.js` habilita uploads directos de video a Vercel Blob:
+
+```
+/api/blob/upload
+```
+
 ## Stack recomendado para el backend
 
 - **Runtime:** Node.js + Express
