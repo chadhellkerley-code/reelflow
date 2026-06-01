@@ -70,6 +70,7 @@
         : null;
       const storedAccount = {
         id: account.id ? `ig_${account.id}` : `ig_${Date.now()}`,
+        igUserId: account.id || '',
         platform: 'ig',
         username: account.username && account.username.startsWith('@') ? account.username : `@${account.username || 'instagram'}`,
         token: account.accessToken,

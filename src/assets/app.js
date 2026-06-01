@@ -418,43 +418,66 @@ function toggleAccountSelect(id, el) {
 }
 
 async function publishReel() {
-  if (!state.selectedVideo) { toast('Seleccioná un video primero', 'error'); return; }
+  const videoUrl = document.getElementById('video-public-url').value.trim();
+  const caption = document.getElementById('post-caption').value.trim();
+  const thumbOffset = Number(document.getElementById('cover-time').value || 0) * 1000;
+
+  if (!videoUrl) { toast('Pegá una URL pública del video', 'error'); return; }
   if (state.selectedAccounts.size === 0) { toast('Seleccioná al menos una cuenta', 'error'); return; }
+  if (state.pubType === 'draft') { toast('Instagram no permite crear drafts por API en este flujo', 'error'); return; }
 
   const btn = document.getElementById('publish-btn');
   const status = document.getElementById('publish-status');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Publicando...';
   status.className = 'publish-status loading';
-  status.textContent = 'Subiendo video al servidor...';
+  status.textContent = 'Creando contenedor de Instagram...';
 
-  // Simulate API call (backend will handle actual upload + publish)
-  await sleep(2000);
-  status.textContent = 'Publicando en cuentas seleccionadas...';
-  await sleep(1500);
+  const accounts = state.accounts.filter(a => state.selectedAccounts.has(a.id) && a.platform === 'ig');
+  const results = [];
 
-  // Log to history
-  const accounts = state.accounts.filter(a => state.selectedAccounts.has(a.id));
-  accounts.forEach(acc => {
-    state.history.push({
-      id: `pub_${Date.now()}_${acc.id}`,
-      type: 'publish',
-      platform: acc.platform,
-      account: acc.username,
-      filename: state.selectedVideo.name,
-      status: state.pubType === 'draft' ? 'draft' : 'published',
-      date: new Date().toISOString(),
-    });
-  });
-  saveHistory();
+  try {
+    for (const acc of accounts) {
+      status.textContent = `Publicando en ${acc.username}...`;
+      const response = await fetch('/api/instagram/publish', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          igUserId: acc.igUserId || acc.id,
+          accessToken: acc.token,
+          videoUrl,
+          caption,
+          thumbOffset,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'No se pudo publicar el Reel.');
+      results.push({ acc, data });
 
-  btn.disabled = false;
-  btn.innerHTML = '<span>◆</span> Publicar Reel';
-  status.className = 'publish-status success';
-  status.textContent = `✓ Publicado en ${accounts.length} cuenta(s)`;
-  toast('Reel publicado correctamente', 'success');
+      state.history.push({
+        id: `pub_${Date.now()}_${acc.id}`,
+        type: 'publish',
+        platform: acc.platform,
+        account: acc.username,
+        filename: videoUrl,
+        status: 'published',
+        date: new Date().toISOString(),
+      });
+    }
 
-  setTimeout(() => { status.textContent = ''; }, 5000);
+    saveHistory();
+    status.className = 'publish-status success';
+    status.textContent = `✓ Publicado en ${results.length} cuenta(s)`;
+    toast('Reel publicado correctamente', 'success');
+    setTimeout(() => { status.textContent = ''; }, 5000);
+  } catch (error) {
+    status.className = 'publish-status error';
+    status.textContent = error.message;
+    toast(error.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>◆</span> Publicar Reel';
+  }
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }

@@ -77,6 +77,12 @@ La ruta `api/instagram/exchange.js` crea el mismo endpoint para Vercel:
 
 En Vercel, no pongas secretos en archivos del proyecto. Guardalos como Environment Variables.
 
+La ruta `api/instagram/publish.js` publica un Reel desde una URL pública de video:
+
+```
+/api/instagram/publish
+```
+
 ## Stack recomendado para el backend
 
 - **Runtime:** Node.js + Express
