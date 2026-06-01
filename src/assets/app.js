@@ -23,6 +23,7 @@ const state = {
     fetchFile: null,
     loaded: false,
     loading: false,
+    fontLoaded: false,
     activeStatusId: null,
   },
 };
@@ -33,6 +34,8 @@ const INSTAGRAM_SCOPES = 'instagram_business_basic,instagram_business_content_pu
 const TIKTOK_CLIENT_KEY = 'sbaw89mga3yconmz26';
 const TIKTOK_SCOPES = 'user.info.basic,video.publish';
 const FFMPEG_CORE_VERSION = '0.12.10';
+const FFMPEG_FONT_URL = 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bopsz,wght%5D.ttf';
+const FFMPEG_FONT_FILE = 'Inter.ttf';
 
 const LOCAL_VIDEO_TEMPLATES = [
   {
@@ -791,6 +794,174 @@ function getBrowserVideoDuration(file) {
   });
 }
 
+function waitForVideoEvent(video, eventName) {
+  return new Promise((resolve, reject) => {
+    const onEvent = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error('No se pudo analizar el video de referencia.'));
+    };
+    const cleanup = () => {
+      video.removeEventListener(eventName, onEvent);
+      video.removeEventListener('error', onError);
+    };
+
+    video.addEventListener(eventName, onEvent, { once: true });
+    video.addEventListener('error', onError, { once: true });
+  });
+}
+
+function setVideoTime(video, time) {
+  return new Promise(resolve => {
+    const onSeeked = () => {
+      video.removeEventListener('seeked', onSeeked);
+      resolve();
+    };
+
+    video.addEventListener('seeked', onSeeked, { once: true });
+    video.currentTime = Math.max(0, Math.min(time, Math.max(0, video.duration - 0.05)));
+    setTimeout(() => {
+      video.removeEventListener('seeked', onSeeked);
+      resolve();
+    }, 900);
+  });
+}
+
+function analyzeFramePixels(imageData, width, height) {
+  const data = imageData.data;
+  let totalLuma = 0;
+  let totalSat = 0;
+  let totalSq = 0;
+  const bandScores = [
+    { key: 'top', score: 0, luma: 0, count: 0, y: 0.12 },
+    { key: 'upper', score: 0, luma: 0, count: 0, y: 0.28 },
+    { key: 'middle', score: 0, luma: 0, count: 0, y: 0.46 },
+    { key: 'lower', score: 0, luma: 0, count: 0, y: 0.66 },
+    { key: 'bottom', score: 0, luma: 0, count: 0, y: 0.82 },
+  ];
+
+  const getBand = y => {
+    if (y < height * 0.2) return bandScores[0];
+    if (y < height * 0.38) return bandScores[1];
+    if (y < height * 0.58) return bandScores[2];
+    if (y < height * 0.78) return bandScores[3];
+    return bandScores[4];
+  };
+
+  for (let y = 1; y < height - 1; y += 2) {
+    for (let x = 1; x < width - 1; x += 2) {
+      const i = (y * width + x) * 4;
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      const max = Math.max(r, g, b) / 255;
+      const min = Math.min(r, g, b) / 255;
+      const sat = max ? (max - min) / max : 0;
+      const right = ((y * width + x + 1) * 4);
+      const down = (((y + 1) * width + x) * 4);
+      const rightLuma = (0.2126 * data[right] + 0.7152 * data[right + 1] + 0.0722 * data[right + 2]) / 255;
+      const downLuma = (0.2126 * data[down] + 0.7152 * data[down + 1] + 0.0722 * data[down + 2]) / 255;
+      const edge = Math.abs(luma - rightLuma) + Math.abs(luma - downLuma);
+      const band = getBand(y);
+
+      totalLuma += luma;
+      totalSat += sat;
+      totalSq += luma * luma;
+      band.score += edge > 0.28 ? edge : 0;
+      band.luma += luma;
+      band.count++;
+    }
+  }
+
+  const count = Math.max(1, Math.floor((width * height) / 4));
+  const brightness = totalLuma / count;
+  const saturation = totalSat / count;
+  const variance = Math.max(0, totalSq / count - brightness * brightness);
+  const bestBand = bandScores
+    .map(band => ({
+      ...band,
+      avgLuma: band.count ? band.luma / band.count : 0.5,
+      density: band.count ? band.score / band.count : 0,
+    }))
+    .sort((a, b) => b.density - a.density)[0];
+
+  return {
+    brightness,
+    saturation,
+    contrast: Math.sqrt(variance),
+    band: bestBand,
+  };
+}
+
+async function analyzeReferenceVisualTemplate(file, duration = 0) {
+  if (!file) return {};
+
+  const video = document.createElement('video');
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const url = URL.createObjectURL(file);
+  const width = 120;
+  const height = 214;
+  const frames = [];
+
+  canvas.width = width;
+  canvas.height = height;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  video.src = url;
+
+  try {
+    await waitForVideoEvent(video, 'loadedmetadata');
+    const videoDuration = duration || video.duration || 0;
+    const sampleCount = Math.min(7, Math.max(3, Math.floor(videoDuration || 4)));
+    for (let i = 0; i < sampleCount; i++) {
+      const pct = sampleCount === 1 ? 0.5 : (i + 0.5) / sampleCount;
+      await setVideoTime(video, pct * Math.max(0.2, videoDuration));
+      ctx.drawImage(video, 0, 0, width, height);
+      frames.push(analyzeFramePixels(ctx.getImageData(0, 0, width, height), width, height));
+    }
+  } catch {
+    URL.revokeObjectURL(url);
+    return {};
+  }
+
+  URL.revokeObjectURL(url);
+
+  if (frames.length === 0) return {};
+
+  const avg = key => frames.reduce((sum, frame) => sum + Number(frame[key] || 0), 0) / frames.length;
+  const bandMap = frames.reduce((acc, frame) => {
+    const key = frame.band?.key || 'lower';
+    acc[key] = acc[key] || { count: 0, density: 0, luma: 0, y: frame.band?.y || 0.66 };
+    acc[key].count++;
+    acc[key].density += frame.band?.density || 0;
+    acc[key].luma += frame.band?.avgLuma || 0.5;
+    return acc;
+  }, {});
+  const primaryBand = Object.entries(bandMap)
+    .map(([key, value]) => ({
+      key,
+      count: value.count,
+      density: value.density / value.count,
+      luma: value.luma / value.count,
+      y: value.y,
+    }))
+    .sort((a, b) => (b.count * b.density) - (a.count * a.density))[0];
+
+  return {
+    brightness: avg('brightness'),
+    saturation: avg('saturation'),
+    contrast: avg('contrast'),
+    textBand: primaryBand || { key: 'lower', y: 0.66, luma: 0.45, density: 0 },
+    hasLikelyOverlay: Boolean(primaryBand && primaryBand.density > 0.018),
+  };
+}
+
 function renderEditorVideos() {
   const list = document.getElementById('editor-videos-list');
   if (state.editorVideos.length === 0) { list.innerHTML = ''; return; }
@@ -883,16 +1054,24 @@ function getReferenceTemplate(ref, index = 0) {
 
 function getReferenceEditProfile(template, referenceMeta = {}, index = 0) {
   const duration = Number(referenceMeta.duration || 0);
+  const visual = referenceMeta.visual || {};
   const fastReference = duration > 0 && duration < 12;
   const mediumReference = duration >= 12 && duration < 25;
   const cadence = fastReference ? 0.9 : mediumReference ? 1.2 : 1.55;
   const driftX = 42 + (index % 4) * 8;
   const driftY = 24 + (index % 3) * 6;
+  const contrast = Number(visual.contrast || 1);
+  const saturation = Number(visual.saturation || 1);
+  const brightness = Number(visual.brightness || 0.5);
+  const contrastBoost = Math.max(1.1, Math.min(1.45, 1.08 + contrast * 0.55));
+  const saturationBoost = Math.max(1.05, Math.min(1.55, 1.05 + saturation * 0.65));
+  const gamma = brightness < 0.42 ? 1.08 : brightness > 0.62 ? 0.96 : 1.02;
+  const grade = `eq=contrast=${contrastBoost.toFixed(2)}:saturation=${saturationBoost.toFixed(2)}:gamma=${gamma.toFixed(2)}`;
 
   const profileByKey = {
     'blur-bg': {
       name: 'recortes + fondo blur + movimiento',
-      filter: `scale=820:1458:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.5}),boxblur=3:1,eq=contrast=1.18:saturation=1.22,unsharp=5:5:1.0:5:5:0`,
+      filter: `scale=820:1458:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.5}),boxblur=3:1,${grade},unsharp=5:5:1.0:5:5:0`,
     },
     'black-white': {
       name: 'recortes + blanco y negro + punch',
@@ -900,11 +1079,11 @@ function getReferenceEditProfile(template, referenceMeta = {}, index = 0) {
     },
     'punchy-color': {
       name: 'recortes + color viral + punch',
-      filter: `scale=880:1564:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.7}),eq=contrast=1.32:saturation=1.45,unsharp=5:5:1.2:5:5:0`,
+      filter: `scale=880:1564:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.7}),${grade},unsharp=5:5:1.2:5:5:0`,
     },
     warm: {
       name: 'recortes + look cálido + cámara suave',
-      filter: `scale=845:1502:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence + 0.4}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 1}),eq=saturation=1.28:gamma_r=1.12:contrast=1.18`,
+      filter: `scale=845:1502:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence + 0.4}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 1}),eq=saturation=${Math.max(1.2, saturationBoost).toFixed(2)}:gamma_r=1.12:contrast=${contrastBoost.toFixed(2)}`,
     },
     'fade-in': {
       name: 'recortes + entrada animada',
@@ -918,7 +1097,7 @@ function getReferenceEditProfile(template, referenceMeta = {}, index = 0) {
 
   return profileByKey[template.key] || {
     name: 'recortes + cámara dinámica',
-    filter: `scale=860:1529:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.9}),eq=contrast=1.22:saturation=1.28,unsharp=5:5:1.0:5:5:0`,
+    filter: `scale=860:1529:force_original_aspect_ratio=increase,crop=w=720:h=1280:x=(iw-ow)/2+${driftX}*sin(2*PI*t/${cadence}):y=(ih-oh)/2+${driftY}*sin(2*PI*t/${cadence + 0.9}),${grade},unsharp=5:5:1.0:5:5:0`,
   };
 }
 
@@ -1162,6 +1341,68 @@ function buildReferenceDrivenSegments(duration, referenceMeta = {}, index = 0, s
   return segments.length > 1 ? segments : [{ start: 0, end: duration }];
 }
 
+function getEditorTextConfig() {
+  return {
+    hook: document.getElementById('global-hook')?.value?.trim() || '',
+    sub: document.getElementById('global-sub')?.value?.trim() || '',
+    username: document.getElementById('global-username')?.value?.trim() || '',
+  };
+}
+
+function escapeDrawText(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/:/g, '\\:')
+    .replace(/'/g, "\\'")
+    .replace(/%/g, '\\%')
+    .replace(/\r?\n/g, ' ')
+    .slice(0, 90);
+}
+
+function buildDrawTextFilter(text, y, fontSize, fontColor = 'white', borderColor = 'black') {
+  if (!text) return '';
+  return `drawtext=fontfile=${FFMPEG_FONT_FILE}:text='${escapeDrawText(text)}':x=(w-text_w)/2:y=${Math.round(y)}:fontsize=${fontSize}:fontcolor=${fontColor}:borderw=4:bordercolor=${borderColor}@0.75`;
+}
+
+function buildReferenceOverlayFilters(referenceMeta = {}, textConfig = {}) {
+  const visual = referenceMeta.visual || {};
+  const band = visual.textBand || { y: 0.68, luma: 0.35 };
+  const anchorY = Math.max(120, Math.min(980, Math.round((band.y || 0.68) * 1280)));
+  const brightBand = Number(band.luma || 0.5) > 0.52;
+  const fontColor = brightBand ? 'black' : 'white';
+  const borderColor = brightBand ? 'white' : 'black';
+  const filters = [];
+
+  if (textConfig.hook) {
+    filters.push('drawbox=x=42:y=' + Math.max(40, anchorY - 34) + ':w=636:h=108:color=' + (brightBand ? 'white@0.58' : 'black@0.52') + ':t=fill');
+    filters.push(buildDrawTextFilter(textConfig.hook, anchorY, 52, fontColor, borderColor));
+  }
+
+  if (textConfig.sub) {
+    filters.push(buildDrawTextFilter(textConfig.sub, Math.min(1110, anchorY + 76), 34, fontColor, borderColor));
+  }
+
+  if (textConfig.username) {
+    filters.push('drawbox=x=36:y=1128:w=300:h=54:color=black@0.35:t=fill');
+    filters.push(`drawtext=fontfile=${FFMPEG_FONT_FILE}:text='${escapeDrawText(textConfig.username)}':x=58:y=1142:fontsize=28:fontcolor=white:borderw=2:bordercolor=black@0.7`);
+  }
+
+  return filters.filter(Boolean);
+}
+
+function appendVideoFilters(baseFilter, extraFilters = [], segment = null) {
+  const filters = [baseFilter, ...extraFilters].filter(Boolean);
+  if (segment && segment.transition) {
+    const duration = Math.max(0, segment.end - segment.start);
+    const fadeDuration = Math.min(0.16, Math.max(0.06, duration * 0.12));
+    filters.push(`fade=t=in:st=0:d=${fadeDuration.toFixed(2)}`);
+    if (duration > fadeDuration * 3) {
+      filters.push(`fade=t=out:st=${Math.max(0, duration - fadeDuration).toFixed(2)}:d=${fadeDuration.toFixed(2)}`);
+    }
+  }
+  return filters.join(',');
+}
+
 function formatSeconds(value) {
   return Number(value || 0).toFixed(3);
 }
@@ -1169,6 +1410,7 @@ function formatSeconds(value) {
 function ffmpegSmartEditCommand(input, output, editPlan) {
   const profile = editPlan.profile;
   const segments = editPlan.segments || [];
+  const overlayFilters = editPlan.overlayFilters || [];
 
   if (!editPlan.hasAudio) {
     if (segments.length > 1) {
@@ -1178,7 +1420,8 @@ function ffmpegSmartEditCommand(input, output, editPlan) {
       segments.forEach((segment, index) => {
         const start = formatSeconds(segment.start);
         const end = formatSeconds(segment.end);
-        chains.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS,${profile.filter}[v${index}]`);
+        const filter = appendVideoFilters(profile.filter, overlayFilters, { ...segment, transition: index > 0 });
+        chains.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS,${filter}[v${index}]`);
         concatInputs.push(`[v${index}]`);
       });
 
@@ -1191,7 +1434,7 @@ function ffmpegSmartEditCommand(input, output, editPlan) {
 
     return [
       '-i', input,
-      '-filter_complex', `[0:v]${profile.filter}[v]`,
+      '-filter_complex', `[0:v]${appendVideoFilters(profile.filter, overlayFilters)}[v]`,
       ...ffmpegRenderArgs(output, null),
     ];
   }
@@ -1203,7 +1446,8 @@ function ffmpegSmartEditCommand(input, output, editPlan) {
     segments.forEach((segment, index) => {
       const start = formatSeconds(segment.start);
       const end = formatSeconds(segment.end);
-      chains.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS,${profile.filter}[v${index}]`);
+      const filter = appendVideoFilters(profile.filter, overlayFilters, { ...segment, transition: index > 0 });
+      chains.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS,${filter}[v${index}]`);
       chains.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${index}]`);
       concatInputs.push(`[v${index}][a${index}]`);
     });
@@ -1217,7 +1461,7 @@ function ffmpegSmartEditCommand(input, output, editPlan) {
 
   return [
     '-i', input,
-    '-filter_complex', `[0:v]${profile.filter}[v];[0:a]anull[a]`,
+    '-filter_complex', `[0:v]${appendVideoFilters(profile.filter, overlayFilters)}[v];[0:a]anull[a]`,
     ...ffmpegRenderArgs(output, '[a]'),
   ];
 }
@@ -1397,6 +1641,16 @@ async function loadFFmpeg(statusEl) {
   }
 }
 
+async function ensureFFmpegFont(runtime) {
+  if (state.ffmpeg.fontLoaded) return;
+
+  const response = await fetch(FFMPEG_FONT_URL);
+  if (!response.ok) throw new Error('No se pudo cargar la fuente para textos del editor.');
+  const data = new Uint8Array(await response.arrayBuffer());
+  await runtime.instance.writeFile(FFMPEG_FONT_FILE, data);
+  state.ffmpeg.fontLoaded = true;
+}
+
 function getTemplateByKey(key) {
   return LOCAL_VIDEO_TEMPLATES.find(template => template.key === key);
 }
@@ -1423,7 +1677,7 @@ function renderPendingResult(reference, template, index, profile, editStats) {
       <div class="result-name">Ref ${index + 1}: ${escapeHtml(reference.name)}</div>
       <div class="result-meta" id="${id}_status">En cola...</div>
       <div class="result-meta">Edición: ${escapeHtml(profile.name)} · ${escapeHtml(cutText)}</div>
-      <div class="result-meta">Ejemplar analizado: ritmo y cortes del video seleccionado</div>
+      <div class="result-meta">Ejemplar analizado: ritmo, cortes, look y zonas de texto/overlay</div>
       <div class="result-actions" id="${id}_actions"></div>
     </div>
   `;
@@ -1479,6 +1733,7 @@ async function generateFormats() {
     state.generatedVideos.forEach(video => URL.revokeObjectURL(video.url));
     state.generatedVideos = [];
     results.innerHTML = '';
+    const textConfig = getEditorTextConfig();
 
     for (let i = 0; i < selectedReferences.length; i++) {
       const reference = selectedReferences[i];
@@ -1493,10 +1748,15 @@ async function generateFormats() {
         const probedReferenceDuration = await probeDuration(ffmpeg, referenceInputName, `ref-duration-${i}.txt`).catch(() => 0);
         referenceMeta.duration = Math.max(probedReferenceDuration, browserReferenceDuration);
         referenceMeta.sceneTimes = await detectSceneTimes(ffmpeg, referenceInputName).catch(() => []);
+        referenceMeta.visual = await analyzeReferenceVisualTemplate(reference.file, referenceMeta.duration).catch(() => ({}));
         await ffmpeg.deleteFile(referenceInputName).catch(() => {});
       }
 
       const profile = getReferenceEditProfile(template, referenceMeta, i);
+      const overlayFilters = buildReferenceOverlayFilters(referenceMeta, textConfig);
+      if (overlayFilters.length > 0) {
+        await ensureFFmpegFont(runtime);
+      }
       const spokenSegments = silenceSegments.length > 1 ? silenceSegments : [{ start: 0, end: baseDuration }];
       const referenceSegments = buildReferenceDrivenSegments(baseDuration, referenceMeta, i, spokenSegments);
       const rhythmSegments = buildRhythmSegments(baseDuration, referenceMeta, i);
@@ -1527,6 +1787,7 @@ async function generateFormats() {
         profile,
         hasAudio,
         segments,
+        overlayFilters,
       });
       await execFFmpegChecked(ffmpeg, command);
       const data = await ffmpeg.readFile(outputName);
