@@ -710,6 +710,45 @@
   color: var(--success);
 }
 
+.image-generation-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+}
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  color: var(--text-1);
+  cursor: pointer;
+}
+.toggle-row input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+.toggle-row small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.image-generation-controls {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 220px) 42px;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.image-generation-controls input { accent-color: var(--accent); }
+
 .ai-analysis-card {
   padding: 18px;
   border: 1px solid rgba(124, 109, 250, 0.36);
@@ -772,6 +811,56 @@
 .ai-analysis-row strong {
   color: var(--text-1);
   font-weight: 700;
+}
+
+.segment-image-preview {
+  grid-column: 1 / -1;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-3);
+}
+.segment-image-preview-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.segment-image-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+.segment-image-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.segment-image-card img {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  background: var(--bg-4);
+}
+.segment-image-card-body { padding: 10px; }
+.segment-image-card-title {
+  overflow: hidden;
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.segment-image-card-meta {
+  margin: 4px 0 8px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+.segment-image-empty {
+  color: var(--text-2);
+  font-size: 13px;
 }
 
 /* ── AI video creator ────────────────────────── */

@@ -45,3 +45,11 @@ export function generatePlan(analysisResult) {
     timeline: sortTimeline(timeline),
   };
 }
+
+export function imagePromptForIdea(idea) {
+  return [
+    `Imagen energetica y de alto contraste que representa: "${idea.text}".`,
+    'Colores saturados, composicion editorial urbana, sensacion de movimiento.',
+    'Formato vertical 9:16, 1080x1920. Sin texto, sin letras, sin logos.',
+  ].join(' ');
+}

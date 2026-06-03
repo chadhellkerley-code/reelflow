@@ -530,6 +530,20 @@
                 <div class="ai-editor-note" id="gemini-editor-note">
                   Gemini se activa desde Configuración. Si no hay API key, ReelFlow usa el análisis local.
                 </div>
+                <div class="image-generation-panel">
+                  <label class="toggle-row" for="editor-generate-images">
+                    <input type="checkbox" id="editor-generate-images" onchange="toggleEditorImageGeneration(this.checked)" />
+                    <span>
+                      <strong>Generar imágenes por segmento</strong>
+                      <small id="image-generation-note">Requiere Gemini API Key. Usa costo adicional por imagen generada.</small>
+                    </span>
+                  </label>
+                  <div class="image-generation-controls">
+                    <label for="image-overlay-opacity">Opacidad</label>
+                    <input type="range" id="image-overlay-opacity" min="0.2" max="0.9" step="0.05" value="0.55" onchange="updateImageOverlayOpacity(this.value)" />
+                    <span id="image-overlay-opacity-value">55%</span>
+                  </div>
+                </div>
                 <button class="btn btn-primary btn-lg btn-full" id="generate-btn" onclick="generateFormats()">
                   <span>◧</span> Generar <span id="gen-count">0</span> formato(s)
                 </button>

@@ -30,6 +30,12 @@ function formatSeconds(value) {
   return Number.isFinite(number) ? number.toFixed(3) : '0.000';
 }
 
+function clampNumber(value, min, max, fallback = min) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
+}
+
 // Maps timeline text styles to concrete drawtext visual values.
 function styleForAction(action, plan) {
   const visualStyle = getFormatVisualStyle(plan?.format);
@@ -201,12 +207,67 @@ function buildOverlayFilters(plan) {
   return filters.filter(Boolean);
 }
 
+function getImageOverlayPosition(action) {
+  const position = action?.position || 'full_bg';
+  const positions = {
+    full_bg: { x: 0, y: 0 },
+    center: { x: '(W-w)/2', y: '(H-h)/2' },
+    top: { x: 0, y: 0 },
+    bottom: { x: 0, y: 'H-h' },
+  };
+  return positions[position] || positions.full_bg;
+}
+
+function buildImageOverlayGraph(plan, imageInputs = []) {
+  const baseFilters = buildBaseFilters(plan).join(',');
+  const overlayFilters = buildOverlayFilters(plan).join(',');
+
+  if (!imageInputs.length) {
+    return `[0:v]${[baseFilters, overlayFilters].filter(Boolean).join(',')}[v]`;
+  }
+
+  const chains = [`[0:v]${baseFilters}[basev]`];
+  let current = 'basev';
+
+  imageInputs.forEach((input, index) => {
+    const inputIndex = index + 1;
+    const imageLabel = `img${index}`;
+    const outputLabel = `imgov${index}`;
+    const action = input.action || input;
+    const start = formatSeconds(action.second);
+    const end = formatSeconds(Number(action.second || 0) + Number(action.duration || 2));
+    const opacity = clampNumber(action.opacity, 0.05, 1, 0.55).toFixed(3);
+    const { x, y } = getImageOverlayPosition(action);
+
+    chains.push(
+      `[${inputIndex}:v]scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1,format=rgba,colorchannelmixer=aa=${opacity}[${imageLabel}]`
+    );
+    chains.push(
+      `[${current}][${imageLabel}]overlay=${x}:${y}:enable='between(t,${start},${end})'[${outputLabel}]`
+    );
+    current = outputLabel;
+  });
+
+  if (overlayFilters) {
+    chains.push(`[${current}]${overlayFilters}[v]`);
+  } else {
+    chains.push(`[${current}]null[v]`);
+  }
+
+  return chains.join(';');
+}
+
 // Converts an edit plan timeline into FFmpeg.wasm command arguments.
-export function buildFFmpegCommand(inputName, outputName, plan) {
-  const filter = [...buildBaseFilters(plan), ...buildOverlayFilters(plan)].join(',');
+export function buildFFmpegCommand(inputName, outputName, plan, imageInputs = []) {
+  const imageArgs = imageInputs.flatMap(input => ['-loop', '1', '-i', input.name]);
+  const filterGraph = imageInputs.length
+    ? buildImageOverlayGraph(plan, imageInputs)
+    : `[0:v]${[...buildBaseFilters(plan), ...buildOverlayFilters(plan)].join(',')}[v]`;
+
   return [
     '-i', inputName,
-    '-filter_complex', `[0:v]${filter}[v]`,
+    ...imageArgs,
+    '-filter_complex', filterGraph,
     '-map', '[v]',
     '-map', '0:a?',
     '-c:v', 'libx264',
@@ -219,6 +280,48 @@ export function buildFFmpegCommand(inputName, outputName, plan) {
     '-movflags', 'faststart',
     outputName,
   ];
+}
+
+function getImagesForPlan(segmentImages = {}, plan = {}) {
+  const timelineImages = (plan.timeline || [])
+    .filter(action => action.action === 'overlay_image' && (action.imageData || action.imageUrl));
+  if (Array.isArray(segmentImages)) {
+    return [
+      ...timelineImages,
+      ...segmentImages.filter(image => !image.format || image.format === plan.format),
+    ];
+  }
+  if (Array.isArray(segmentImages?.[plan.format])) return [...timelineImages, ...segmentImages[plan.format]];
+  return timelineImages;
+}
+
+function base64ToUint8Array(base64) {
+  const binary = atob(String(base64 || ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function writePlanImages(ffmpeg, plan, segmentImages = {}) {
+  const images = getImagesForPlan(segmentImages, plan)
+    .filter(image => image?.imageData || image?.imageUrl)
+    .slice(0, 10);
+  const written = [];
+
+  for (let index = 0; index < images.length; index += 1) {
+    const image = images[index];
+    const name = `segment-${plan.format}-${Date.now()}-${index}.png`;
+    const data = image.imageData
+      ? base64ToUint8Array(image.imageData)
+      : new Uint8Array(await fetch(image.imageUrl).then(response => response.arrayBuffer()));
+
+    await ffmpeg.writeFile(name, data);
+    written.push({ name, action: image });
+  }
+
+  return written;
 }
 
 // Loads FFmpeg.wasm and returns { ffmpeg, fetchFile }.
@@ -255,7 +358,7 @@ export async function ensureFont(ffmpeg) {
 }
 
 // Processes edit plans sequentially and returns generated MP4 File objects with preview URLs.
-export async function renderFormatQueue(videoFile, plans, options = {}) {
+export async function renderFormatQueue(videoFile, plans, options = {}, segmentImages = {}) {
   if (!videoFile) throw new Error('Falta el video base para renderizar.');
   if (!Array.isArray(plans) || plans.length === 0) throw new Error('No hay planes de edicion para procesar.');
 
@@ -281,20 +384,25 @@ export async function renderFormatQueue(videoFile, plans, options = {}) {
     for (let index = 0; index < plans.length; index += 1) {
       const plan = plans[index];
       const outputName = `${videoFile.name.replace(/\.[^.]+$/, '').replace(/[^a-z0-9._-]/gi, '-')}-${plan.format}.mp4`;
+      const imageInputs = await writePlanImages(ffmpeg, plan, segmentImages);
       options.activeFormat = plan.format;
       options.onFormatStart?.({ plan, index, total: plans.length });
 
-      const command = buildFFmpegCommand(inputName, outputName, plan);
-      const code = await ffmpeg.exec(command);
-      if (code !== 0) throw new Error(`FFmpeg no pudo renderizar ${plan.format}.`);
+      try {
+        const command = buildFFmpegCommand(inputName, outputName, plan, imageInputs);
+        const code = await ffmpeg.exec(command);
+        if (code !== 0) throw new Error(`FFmpeg no pudo renderizar ${plan.format}.`);
 
-      const data = await ffmpeg.readFile(outputName);
-      const blob = new Blob([data], { type: 'video/mp4' });
-      const file = new File([blob], outputName, { type: 'video/mp4' });
-      const result = { format: plan.format, plan, file, url: URL.createObjectURL(blob) };
-      results.push(result);
-      options.onComplete?.(result);
-      await ffmpeg.deleteFile(outputName).catch(() => {});
+        const data = await ffmpeg.readFile(outputName);
+        const blob = new Blob([data], { type: 'video/mp4' });
+        const file = new File([blob], outputName, { type: 'video/mp4' });
+        const result = { format: plan.format, plan, file, url: URL.createObjectURL(blob) };
+        results.push(result);
+        options.onComplete?.(result);
+      } finally {
+        await ffmpeg.deleteFile(outputName).catch(() => {});
+        await Promise.all(imageInputs.map(input => ffmpeg.deleteFile(input.name).catch(() => {})));
+      }
     }
   } finally {
     options.activeFormat = '';

@@ -36,3 +36,11 @@ export function generatePlan(analysisResult) {
     timeline: sortTimeline(timeline),
   };
 }
+
+export function imagePromptForIdea(idea) {
+  return [
+    `Fotograma documental en blanco y negro que ilustra: "${idea.text}".`,
+    'Cinematografico, sombras duras, textura realista, tension narrativa.',
+    'Formato vertical 9:16, 1080x1920. Sin texto, sin letras, sin logos.',
+  ].join(' ');
+}

@@ -19,6 +19,8 @@ const state = {
   selectedReferences: new Set(),
   selectedTemplates: new Set(['ig-cinematic-hook']),
   generatedVideos: [],
+  segmentImages: {},
+  lastAutomaticEngineResult: null,
   selectedAccounts: new Set(),
   pubType: 'reel',
   scheduleType: 'now',
@@ -36,6 +38,9 @@ state.settings = {
   backendUrl: 'http://localhost:4000',
   geminiApiKey: '',
   geminiModel: 'gemini-1.5-pro',
+  geminiImageModel: 'gemini-2.0-flash-preview-image-generation',
+  generateSegmentImages: false,
+  imageOverlayOpacity: 0.55,
   openaiApiKey: '',
   openaiVideoModel: 'sora-2',
   openaiTtsModel: 'gpt-4o-mini-tts',
@@ -452,6 +457,8 @@ function saveSettings() {
   state.settings.backendUrl = document.getElementById('backend-url')?.value?.trim() || 'http://localhost:4000';
   state.settings.geminiApiKey = document.getElementById('gemini-api-key')?.value?.trim() || '';
   state.settings.geminiModel = document.getElementById('gemini-model')?.value?.trim() || 'gemini-1.5-pro';
+  state.settings.geminiImageModel = state.settings.geminiImageModel || 'gemini-2.0-flash-preview-image-generation';
+  state.settings.imageOverlayOpacity = Number(state.settings.imageOverlayOpacity || 0.55);
   state.settings.openaiApiKey = document.getElementById('openai-api-key')?.value?.trim() || '';
   state.settings.openaiVideoModel = document.getElementById('openai-video-model')?.value?.trim() || 'sora-2';
   state.settings.openaiTtsModel = document.getElementById('openai-tts-model')?.value?.trim() || 'gpt-4o-mini-tts';
@@ -1255,6 +1262,7 @@ function initEditor() {
   renderReferenceVideos();
   updateReferenceCount();
   updateEditorEngineStatus();
+  updateImageGenerationControls();
 }
 
 function getActiveFormatTemplates() {
@@ -1427,6 +1435,59 @@ function updateEditorEngineStatus() {
 
   renderFormatTemplates();
   updateFormatCount();
+  updateImageGenerationControls();
+}
+
+function persistEditorImageSettings() {
+  localStorage.setItem('rf_settings', JSON.stringify(state.settings));
+  syncGeminiGlobals();
+}
+
+function updateImageGenerationControls() {
+  const checkbox = document.getElementById('editor-generate-images');
+  const note = document.getElementById('image-generation-note');
+  const opacity = document.getElementById('image-overlay-opacity');
+  const opacityValue = document.getElementById('image-overlay-opacity-value');
+  const hasGemini = isGeminiEnabled();
+
+  if (checkbox) {
+    checkbox.checked = Boolean(state.settings.generateSegmentImages && hasGemini);
+    checkbox.disabled = !hasGemini;
+  }
+  if (note) {
+    note.textContent = hasGemini
+      ? 'Usa Gemini imagen por idea y puede tener costo adicional por imagen generada.'
+      : 'Requiere Gemini API Key. Usa costo adicional por imagen generada.';
+  }
+  if (opacity) {
+    opacity.value = String(state.settings.imageOverlayOpacity || 0.55);
+    opacity.disabled = !hasGemini;
+  }
+  if (opacityValue) {
+    opacityValue.textContent = `${Math.round(Number(state.settings.imageOverlayOpacity || 0.55) * 100)}%`;
+  }
+}
+
+function toggleEditorImageGeneration(value) {
+  if (value && !isGeminiEnabled()) {
+    toast('Configurá Gemini API Key antes de generar imágenes', 'error');
+    state.settings.generateSegmentImages = false;
+  } else {
+    state.settings.generateSegmentImages = Boolean(value);
+    if (value) toast('Generación de imágenes activada. Puede generar costo por imagen.', 'info');
+  }
+  persistEditorImageSettings();
+  updateImageGenerationControls();
+}
+
+function updateImageOverlayOpacity(value) {
+  state.settings.imageOverlayOpacity = clampNumber(value, 0.2, 0.9, 0.55);
+  persistEditorImageSettings();
+  updateImageGenerationControls();
+}
+
+function shouldGenerateSegmentImages() {
+  return Boolean(isGeminiEnabled() && state.settings.generateSegmentImages);
 }
 
 function getReferenceTemplate(ref, index = 0) {
@@ -1748,6 +1809,8 @@ function isGeminiEnabled() {
 function syncGeminiGlobals() {
   window.GEMINI_API_KEY = getGeminiApiKey();
   window.GEMINI_MODEL = getGeminiModel();
+  window.GEMINI_IMAGE_MODEL = state.settings.geminiImageModel || 'gemini-2.0-flash-preview-image-generation';
+  window.IMAGE_OVERLAY_OPACITY = Number(state.settings.imageOverlayOpacity || 0.55);
 }
 
 function readFileAsBase64(file) {
@@ -2488,6 +2551,105 @@ function renderAutomaticAnalysisSummary(engineResult) {
   `);
 }
 
+function getSegmentImageList(segmentImages = state.segmentImages) {
+  return Object.entries(segmentImages || {}).flatMap(([format, images]) =>
+    (images || []).map(image => ({ ...image, format: image.format || format }))
+  );
+}
+
+function renderSegmentImagePreview(segmentImages = state.segmentImages) {
+  const results = document.getElementById('generated-results');
+  if (!results) return;
+
+  const existing = document.getElementById('segment-image-preview');
+  if (existing) existing.remove();
+
+  const images = getSegmentImageList(segmentImages);
+  const html = images.length
+    ? `
+      <div class="segment-image-preview-grid">
+        ${images.map(image => `
+          <div class="segment-image-card" id="segment-image-${escapeHtml(image.format)}-${image.ideaIndex}">
+            <img src="${escapeHtml(image.imageUrl)}" alt="Imagen generada para ${escapeHtml(image.format)}" />
+            <div class="segment-image-card-body">
+              <div class="segment-image-card-title">${escapeHtml(image.format.replaceAll('_', ' '))}</div>
+              <div class="segment-image-card-meta">${Number(image.second || 0).toFixed(1)}s · ${Number(image.duration || 0).toFixed(1)}s</div>
+              <button class="btn btn-outline btn-sm" onclick="regenerateSegmentImage('${escapeHtml(image.format)}', ${Number(image.ideaIndex || 0)})">Regenerar imagen</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `
+    : '<div class="segment-image-empty">No se generaron imágenes. El render seguirá solo con el video original y overlays de texto.</div>';
+
+  results.insertAdjacentHTML('beforeend', `
+    <div class="segment-image-preview" id="segment-image-preview">
+      <div class="segment-image-preview-header">
+        <div>
+          <div class="result-name">Imagenes por segmento</div>
+          <div class="result-meta">${images.length} imagen(es) listas para usar como capa visual.</div>
+        </div>
+        <span class="badge badge-pending">Preview</span>
+      </div>
+      ${html}
+    </div>
+  `);
+}
+
+async function regenerateSegmentImage(format, ideaIndex) {
+  const engineResult = state.lastAutomaticEngineResult;
+  const plan = engineResult?.plans?.find(item => item.format === format);
+  const idea = engineResult?.analysis?.ideas?.[ideaIndex];
+  if (!plan || !idea) {
+    toast('No encontré el segmento para regenerar.', 'error');
+    return;
+  }
+
+  const card = document.getElementById(`segment-image-${format}-${ideaIndex}`);
+  const button = card?.querySelector('button');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Regenerando...';
+  }
+
+  try {
+    const { generateSegmentImages } = await import('/src/engine/formatEngine.js');
+    const partialAnalysis = {
+      ...engineResult.analysis,
+      ideas: [idea],
+    };
+    const images = await generateSegmentImages(partialAnalysis, plan, {
+      apiKey: getGeminiApiKey(),
+      imageModel: state.settings.geminiImageModel,
+      imageOverlayOpacity: state.settings.imageOverlayOpacity,
+      maxSegmentImages: 1,
+    });
+    if (!images[0]) throw new Error('Gemini no devolvió una imagen nueva.');
+
+    const nextImage = {
+      ...images[0],
+      format,
+      ideaIndex,
+      second: state.segmentImages?.[format]?.find(image => image.ideaIndex === ideaIndex)?.second ?? images[0].second,
+    };
+    const currentImages = state.segmentImages[format] || [];
+    const replaced = currentImages.some(image => image.ideaIndex === ideaIndex);
+    state.segmentImages[format] = replaced
+      ? currentImages.map(image => image.ideaIndex === ideaIndex ? nextImage : image)
+      : [...currentImages, nextImage];
+    renderSegmentImagePreview(state.segmentImages);
+    toast('Imagen regenerada', 'success');
+  } catch (error) {
+    toast(getErrorMessage(error, 'No se pudo regenerar la imagen.'), 'error');
+  } finally {
+    const updatedButton = document.querySelector(`#segment-image-${format}-${ideaIndex} button`);
+    if (updatedButton) {
+      updatedButton.disabled = false;
+      updatedButton.textContent = 'Regenerar imagen';
+    }
+  }
+}
+
 async function generateAutomaticFormats() {
   const btn = document.getElementById('generate-btn');
   const results = document.getElementById('generated-results');
@@ -2501,7 +2663,7 @@ async function generateAutomaticFormats() {
   }
 
   syncGeminiGlobals();
-  const { analyzeAndPlan, renderFormatQueue } = await import('/src/engine/formatEngine.js');
+  const { analyzeAndPlan, generateImagesForAllPlans, renderFormatQueue } = await import('/src/engine/formatEngine.js');
 
   state.generatedVideos.forEach(video => URL.revokeObjectURL(video.url));
   state.generatedVideos = [];
@@ -2521,9 +2683,32 @@ async function generateAutomaticFormats() {
       if (event.message) updateLiveStatus(event.message);
     },
   });
+  state.lastAutomaticEngineResult = engineResult;
+  state.segmentImages = {};
 
   results.innerHTML = '';
   renderAutomaticAnalysisSummary(engineResult);
+
+  if (shouldGenerateSegmentImages()) {
+    results.insertAdjacentHTML('beforeend', `<div class="render-status" id="editor-render-status">Generando imágenes por segmento con Gemini...</div>`);
+    state.segmentImages = await generateImagesForAllPlans(engineResult.plans, engineResult.analysis, {
+      apiKey: getGeminiApiKey(),
+      imageModel: state.settings.geminiImageModel,
+      imageOverlayOpacity: state.settings.imageOverlayOpacity,
+      maxSegmentImages: 10,
+      imageConcurrency: 3,
+      onProgress: event => {
+        if (event.message) updateLiveStatus(event.message);
+      },
+      onImageError: event => {
+        console.warn('Gemini image generation failed', event);
+      },
+    });
+    const imageStatus = document.getElementById('editor-render-status');
+    if (imageStatus) imageStatus.remove();
+    renderSegmentImagePreview(state.segmentImages);
+  }
+
   results.insertAdjacentHTML('beforeend', `<div class="render-status" id="editor-render-status">Cargando FFmpeg.wasm para renderizar...</div>`);
   const runtime = await loadFFmpeg(document.getElementById('editor-render-status'));
 
@@ -2557,7 +2742,7 @@ async function generateAutomaticFormats() {
       state.generatedVideos.push(generated);
       if (id) renderCompletedResult(id, generated);
     },
-  });
+  }, state.segmentImages);
 
   engineResult.plans.forEach((plan, index) => {
     state.history.push({
