@@ -11,9 +11,6 @@ const state = {
   history:  JSON.parse(localStorage.getItem('rf_history')  || '[]'),
   settings: JSON.parse(localStorage.getItem('rf_settings') || '{"backendUrl":"http://localhost:4000"}'),
   selectedVideo: null,
-  aiVideoPhoto: null,
-  aiVideoPhotoUrl: '',
-  aiVoiceSample: null,
   editorVideos: [],
   editorProjects: [],
   editorModalProjectId: null,
@@ -46,13 +43,6 @@ state.settings = {
   geminiImageModel: 'gemini-2.0-flash-preview-image-generation',
   generateSegmentImages: false,
   imageOverlayOpacity: 0.55,
-  openaiApiKey: '',
-  openaiVideoModel: 'sora-2',
-  openaiTtsModel: 'gpt-4o-mini-tts',
-  openaiVoiceId: '',
-  lipSyncProvider: 'sync-labs',
-  lipSyncApiKey: '',
-  lipSyncEndpoint: '',
   ...state.settings,
 };
 
@@ -4298,219 +4288,6 @@ function crc32(bytes) {
 }
 
 // ═══════════════════════════════════════════════════════════
-//  AI VIDEO CREATOR
-// ═══════════════════════════════════════════════════════════
-function handleAiPhotoUpload(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-
-  if (!file.type.startsWith('image/')) {
-    toast('Subí una imagen válida', 'error');
-    return;
-  }
-
-  if (state.aiVideoPhotoUrl) URL.revokeObjectURL(state.aiVideoPhotoUrl);
-  state.aiVideoPhoto = file;
-  state.aiVideoPhotoUrl = URL.createObjectURL(file);
-  renderAiPhotoPreview();
-  renderAiVideoStatus();
-}
-
-function renderAiPhotoPreview() {
-  const container = document.getElementById('ai-photo-preview');
-  if (!container || !state.aiVideoPhoto) return;
-
-  container.innerHTML = `
-    <div class="ai-asset-card">
-      <img src="${state.aiVideoPhotoUrl}" alt="Foto de referencia" />
-      <div class="ai-asset-info">
-        <strong>${escapeHtml(state.aiVideoPhoto.name)}</strong>
-        <span>${formatBytes(state.aiVideoPhoto.size)}</span>
-      </div>
-      <button class="btn btn-ghost btn-sm" onclick="clearAiPhoto()">Quitar</button>
-    </div>
-  `;
-}
-
-function clearAiPhoto() {
-  if (state.aiVideoPhotoUrl) URL.revokeObjectURL(state.aiVideoPhotoUrl);
-  state.aiVideoPhoto = null;
-  state.aiVideoPhotoUrl = '';
-  const input = document.getElementById('ai-photo-input');
-  const preview = document.getElementById('ai-photo-preview');
-  if (input) input.value = '';
-  if (preview) preview.innerHTML = '';
-  renderAiVideoStatus();
-}
-
-function handleAiVoiceSampleUpload(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-
-  if (!file.type.startsWith('audio/') && !file.type.startsWith('video/')) {
-    toast('Subí un audio o video válido', 'error');
-    return;
-  }
-
-  state.aiVoiceSample = file;
-  const preview = document.getElementById('ai-voice-preview');
-  if (preview) {
-    preview.innerHTML = `
-      <div class="ai-asset-card compact">
-        <div class="ai-asset-icon">◍</div>
-        <div class="ai-asset-info">
-          <strong>${escapeHtml(file.name)}</strong>
-          <span>${formatBytes(file.size)} · ${escapeHtml(file.type || 'archivo de voz')}</span>
-        </div>
-        <button class="btn btn-ghost btn-sm" onclick="clearAiVoiceSample()">Quitar</button>
-      </div>
-    `;
-  }
-  renderAiVideoStatus();
-}
-
-function clearAiVoiceSample() {
-  state.aiVoiceSample = null;
-  const input = document.getElementById('ai-voice-sample-input');
-  const preview = document.getElementById('ai-voice-preview');
-  if (input) input.value = '';
-  if (preview) preview.innerHTML = '';
-  renderAiVideoStatus();
-}
-
-function getAiInputValue(id) {
-  return document.getElementById(id)?.value?.trim() || '';
-}
-
-function getAiVideoBrief() {
-  return {
-    idea: getAiInputValue('ai-video-idea'),
-    dialogue: getAiInputValue('ai-video-dialogue'),
-    people: getAiInputValue('ai-video-people'),
-    location: getAiInputValue('ai-video-location'),
-    clothing: getAiInputValue('ai-video-clothing'),
-    action: getAiInputValue('ai-video-action'),
-    topic: getAiInputValue('ai-video-topic'),
-    cta: getAiInputValue('ai-video-cta'),
-    ratio: getAiInputValue('ai-video-ratio') || 'vertical 9:16',
-    duration: getAiInputValue('ai-video-duration') || '8 segundos',
-    quality: getAiInputValue('ai-video-quality') || 'look 4K, nitido, cinematico, piel natural',
-    camera: getAiInputValue('ai-video-camera'),
-    voiceMode: getAiInputValue('ai-voice-mode') || 'configured',
-    voiceTone: getAiInputValue('ai-voice-tone') || 'natural vendedor',
-  };
-}
-
-function buildAiVideoPrompt() {
-  const brief = getAiVideoBrief();
-  if (!brief.idea && !brief.dialogue) {
-    toast('Completá la idea principal o el texto que debe decir', 'error');
-    return '';
-  }
-
-  const voiceInstruction = {
-    configured: state.settings.openaiVoiceId
-      ? `Usar Voice ID personalizada "${state.settings.openaiVoiceId}" con tono ${brief.voiceTone}.`
-      : `Usar una voz personalizada autorizada con tono ${brief.voiceTone}. Falta configurar Voice ID.`,
-    sample: state.aiVoiceSample
-      ? `Crear o usar voz personalizada a partir de la muestra adjunta "${state.aiVoiceSample.name}", solo si existe consentimiento del propietario. Tono ${brief.voiceTone}.`
-      : `Crear o usar voz personalizada con muestra autorizada. Falta adjuntar audio/video de referencia. Tono ${brief.voiceTone}.`,
-    neutral: `Usar una voz IA predeterminada, clara y natural, con tono ${brief.voiceTone}.`,
-  }[brief.voiceMode] || `Usar voz natural con tono ${brief.voiceTone}.`;
-
-  const prompt = [
-    `Crear un video ${brief.ratio} de ${brief.duration} usando la imagen de referencia como base visual.`,
-    '',
-    'Objetivo del video:',
-    brief.idea || 'No especificado.',
-    '',
-    'Personas / personaje:',
-    brief.people || 'Usar el sujeto principal de la foto de referencia.',
-    '',
-    'Escena y estilo:',
-    `Lugar: ${brief.location || 'fondo limpio y realista.'}`,
-    `Vestimenta: ${brief.clothing || 'coherente con la foto y el contexto.'}`,
-    `Accion: ${brief.action || 'hablar a camara con gestos naturales.'}`,
-    `Camara: ${brief.camera || 'plano medio, mirada a camara, movimiento suave.'}`,
-    `Calidad: ${brief.quality}. Evitar deformaciones de rostro, manos, dientes o texto ilegible.`,
-    '',
-    'Guion / dialogo:',
-    brief.dialogue || `Hablar sobre ${brief.topic || 'el tema principal'} de forma clara, breve y convincente.`,
-    '',
-    'Tema central:',
-    brief.topic || 'No especificado.',
-    '',
-    'Llamado a la accion:',
-    brief.cta || 'Cerrar con una invitacion clara a comentar, escribir por DM o seguir la cuenta.',
-    '',
-    'Voz:',
-    voiceInstruction,
-    '',
-    'Lip-sync:',
-    `Sincronizar labios con el audio final usando ${state.settings.lipSyncProvider || 'proveedor de lip-sync'} y conservar expresiones naturales.`,
-    '',
-    'Postproduccion:',
-    'Agregar subtitulos legibles, ritmo dinamico, audio limpio, color natural, nitidez alta y export MP4 listo para reels.',
-  ].join('\n');
-
-  const output = document.getElementById('ai-video-prompt-output');
-  if (output) output.value = prompt;
-  renderAiVideoStatus();
-  toast('Prompt avanzado generado', 'success');
-  return prompt;
-}
-
-function copyAiVideoPrompt() {
-  const output = document.getElementById('ai-video-prompt-output');
-  if (!output?.value) {
-    toast('Primero generá el prompt', 'error');
-    return;
-  }
-  navigator.clipboard.writeText(output.value).then(() => toast('Prompt copiado', 'success'));
-}
-
-function saveAiVideoDraft() {
-  const prompt = document.getElementById('ai-video-prompt-output')?.value || buildAiVideoPrompt();
-  if (!prompt) return;
-
-  state.history.push({
-    id: 'ai_' + Date.now(),
-    type: 'ai-video',
-    platform: 'ai',
-    status: 'draft',
-    filename: state.aiVideoPhoto?.name || 'Video IA',
-    prompt,
-    date: new Date().toISOString(),
-  });
-  saveHistory();
-  renderDashboard();
-  toast('Borrador de video IA guardado', 'success');
-}
-
-function renderAiVideoStatus() {
-  const status = document.getElementById('ai-video-status');
-  if (!status) return;
-
-  const voiceMode = getAiInputValue('ai-voice-mode') || 'configured';
-  const checks = [
-    state.aiVideoPhoto ? 'foto lista' : 'falta foto',
-    state.settings.openaiApiKey ? 'OpenAI configurado' : 'falta OpenAI API key',
-    state.settings.openaiVoiceId || state.aiVoiceSample || voiceMode === 'neutral' ? 'voz lista' : 'falta voz o Voice ID',
-    state.settings.lipSyncApiKey || state.settings.lipSyncEndpoint ? 'lip-sync configurado' : 'falta lip-sync',
-  ];
-
-  const ready = state.aiVideoPhoto
-    && state.settings.openaiApiKey
-    && (state.settings.openaiVoiceId || state.aiVoiceSample || voiceMode === 'neutral')
-    && (state.settings.lipSyncApiKey || state.settings.lipSyncEndpoint);
-
-  status.className = `ai-editor-note ${ready ? 'success' : ''}`;
-  status.textContent = ready
-    ? `Pipeline listo: ${checks.join(' · ')}. El backend puede generar guion, voz, lip-sync y render final.`
-    : `Estado: ${checks.join(' · ')}.`;
-}
-
-// ═══════════════════════════════════════════════════════════
 //  HISTORY
 // ═══════════════════════════════════════════════════════════
 function renderHistory() {
@@ -4659,10 +4436,9 @@ function setupInstagramOAuthFields() {
 function init() {
   syncGeminiGlobals();
   setupInstagramOAuthFields();
-  if (typeof setupAiVideoCreatorEvents === 'function') setupAiVideoCreatorEvents();
 
   state.accounts = state.accounts.filter(account => account.platform === 'ig');
-  state.history = state.history.filter(item => ['ig', 'ai'].includes(item.platform));
+  state.history = state.history.filter(item => item?.platform !== 'ai');
   state.selectedAccounts = new Set([...state.selectedAccounts].filter(id => state.accounts.some(account => account.id === id)));
   saveAccounts();
   saveHistory();
