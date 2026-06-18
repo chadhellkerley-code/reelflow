@@ -140,19 +140,46 @@ const EDITOR_COLOR_OPTIONS = [
 ];
 
 function makeEditorBackgroundOption(index) {
-  const hue = (index * 23) % 360;
-  const hue2 = (hue + 38 + (index * 11)) % 360;
-  const hue3 = (hue + 170) % 360;
-  const base = `linear-gradient(135deg, hsl(${hue} 70% 22%), hsl(${hue2} 72% 14%))`;
-  const overlay = `radial-gradient(circle at 20% 20%, hsla(${hue3} 90% 65% / 0.35), transparent 45%)`;
+  const hue = (330 + (index * 17)) % 360;
+  const saturation = 78 + (index % 4);
+  const lightness = 44 + (index % 5);
+  const backgroundColor = hslToHex(hue, saturation, lightness);
+  const accent = hslToHex((hue + 28) % 360, 92, 66);
   return {
     id: `bg-${index + 1}`,
-    label: `Fondo ${index + 1}`,
-    css: `${overlay}, ${base}`,
-    start: `hsl(${hue} 70% 24%)`,
-    end: `hsl(${hue2} 72% 14%)`,
-    accent: `hsl(${hue3} 90% 65%)`,
+    label: `Liso ${index + 1}`,
+    backgroundColor,
+    accent,
   };
+}
+
+function hslToHex(h, s, l) {
+  const hue = ((Number(h) % 360) + 360) % 360;
+  const sat = Math.max(0, Math.min(100, Number(s))) / 100;
+  const light = Math.max(0, Math.min(100, Number(l))) / 100;
+  const c = (1 - Math.abs((2 * light) - 1)) * sat;
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = light - (c / 2);
+  let r = 0;
+  let g = 0;
+  let b = 0;
+
+  if (hue < 60) {
+    r = c; g = x;
+  } else if (hue < 120) {
+    r = x; g = c;
+  } else if (hue < 180) {
+    g = c; b = x;
+  } else if (hue < 240) {
+    g = x; b = c;
+  } else if (hue < 300) {
+    r = x; b = c;
+  } else {
+    r = c; b = x;
+  }
+
+  const toHex = value => Math.round((value + m) * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
 const EDITOR_BACKGROUND_OPTIONS = Array.from({ length: 50 }, (_, index) => makeEditorBackgroundOption(index));
@@ -164,7 +191,7 @@ const EDITOR_DEFAULT_COPY = () => ({
   titlePositionY: 70,
   font: EDITOR_FONT_OPTIONS[0].family,
   backgroundId: EDITOR_BACKGROUND_OPTIONS[0].id,
-  backgroundColor: '#111827',
+  backgroundColor: EDITOR_BACKGROUND_OPTIONS[0].backgroundColor,
   showBackground: true,
   size: 54,
   opacity: 88,
@@ -2467,7 +2494,7 @@ async function execEditorFFmpegChecked(runtime, args, onProgress, errorMessage =
     lastProgressAt = Date.now();
     if (!onProgress) return;
     const pct = 92 + (Math.max(0, Math.min(1, Number(progress) || 0)) * 6);
-    onProgress(pct, 'Transcodificando con FFmpeg...');
+    onProgress(pct, 'Procesando con FFmpeg...');
   };
 
   const abortRuntime = reason => {
@@ -3053,6 +3080,10 @@ function getEditorFontOptionByFamily(family) {
   return EDITOR_FONT_OPTIONS.find(option => option.family === family) || EDITOR_FONT_OPTIONS[0];
 }
 
+function getEditorCommittedTitle(copy) {
+  return String(copy?.title || '').trim();
+}
+
 function getEditorTitlePosition(copy) {
   return {
     x: clampNumber(copy?.titlePositionX, 0, 100, 50),
@@ -3070,7 +3101,7 @@ function getEditorTitlePreviewStyle(copy, background) {
   }
 
   return {
-    background: `linear-gradient(135deg, ${hexToRgba(copy.backgroundColor, alpha)}, ${background.end})`,
+    background: hexToRgba(copy.backgroundColor || background.backgroundColor || '#111827', alpha),
     color: isLightColor(copy.backgroundColor) ? '#111827' : '#ffffff',
   };
 }
@@ -3082,7 +3113,7 @@ function getEditorTitleOverlayStyle(copy, background) {
   return `
     left:${position.x}%;
     top:${position.y}%;
-    background:${preview.background};
+    background-color:${preview.background};
     color:${color};
     padding:${Number(copy.padding || 18)}px;
     font-size:${Number(copy.size || 54)}px;
@@ -3208,16 +3239,17 @@ function renderEditorVideos() {
   }
 
   list.innerHTML = state.editorProjects.map(project => {
-    const activeCopy = getEditorActiveCopy(project);
+    const processingCopy = project.copies.find(copy => copy.status === 'processing') || null;
+    const activeCopy = processingCopy || getEditorActiveCopy(project);
     const readyCount = project.copies.filter(copy => copy.status === 'ready').length;
     const failedCount = project.copies.filter(copy => copy.status === 'failed').length;
     const completedCount = project.copies.filter(copy => copy.status === 'ready' || copy.status === 'failed').length;
-    const activeProgress = activeCopy?.status === 'processing' ? clampEditorProgress(activeCopy.progress) / 100 : 0;
+    const activeProgress = processingCopy ? clampEditorProgress(processingCopy.progress) / 100 : 0;
     const progress = project.copies.length
       ? Math.round(((completedCount + activeProgress) / project.copies.length) * 100)
       : 0;
-    const activeProgressLabel = activeCopy?.status === 'processing'
-      ? `${Math.round(clampEditorProgress(activeCopy.progress))}%`
+    const activeProgressLabel = processingCopy
+      ? `${Math.round(clampEditorProgress(processingCopy.progress))}%`
       : `${progress}%`;
     return `
       <article class="editor-project-card ${state.editorModalProjectId === project.id ? 'selected' : ''}">
@@ -3449,12 +3481,11 @@ function renderEditorProjectModal(projectId) {
   const previewSrc = state.editorPreviewMode === 'generated' && activeCopy?.output?.url
     ? activeCopy.output.url
     : project.previewUrl;
-  const committedTitle = getEditorCopyLabel(activeCopy);
   const draftTitle = String(activeCopy.titleDraft || '');
   const titleValue = draftTitle || activeCopy.title || '';
   const previewChipStyle = getEditorTitlePreviewStyle(activeCopy, background);
   const titleOverlayStyle = getEditorTitleOverlayStyle(activeCopy, background);
-  const hasCommittedTitle = Boolean(String(activeCopy.title || '').trim());
+  const hasCommittedTitle = Boolean(getEditorCommittedTitle(activeCopy));
   const tabs = project.copies.map(copy => `
     <button class="editor-copy-tab ${copy.index - 1 === project.activeCopyIndex ? 'active' : ''}" onclick="selectEditorCopy('${project.id}', ${copy.index - 1})">
       ${copy.index}. copia${copy.index}
@@ -3473,7 +3504,7 @@ function renderEditorProjectModal(projectId) {
             style="${titleOverlayStyle}"
             ${hasCommittedTitle ? `onpointerdown="startEditorTitleDrag(event, '${project.id}')"` : ''}
           >
-            <span>${escapeHtml(committedTitle || ' ')}</span>
+            <span>${escapeHtml(getEditorCommittedTitle(activeCopy))}</span>
           </div>
         </div>
         <div class="editor-action-row">
@@ -3587,7 +3618,7 @@ function renderEditorProjectModal(projectId) {
         <div class="editor-control-group">
           <label>Vista previa de estilo</label>
           <div class="editor-title-preview ${activeCopy.showBackground ? '' : 'hidden-bg'}" id="editor-title-preview" style="background:${previewChipStyle.background};padding:${Number(activeCopy.padding || 18)}px;font-size:${Number(activeCopy.size || 54)}px;font-family:${activeCopy.font};">
-            <span style="color:${previewChipStyle.color}">${escapeHtml(committedTitle || 'TITULO DE ESTA COPIA')}</span>
+            <span style="color:${previewChipStyle.color}">${escapeHtml(getEditorCommittedTitle(activeCopy))}</span>
           </div>
           <div class="editor-scroll-note">Fuente: ${escapeHtml(font.label)} · Fondo: ${escapeHtml(background.label)}</div>
         </div>
@@ -3635,13 +3666,13 @@ function updateEditorPreviewChip(projectId) {
     chip.style.background = previewStyles.background;
     if (title) {
       title.style.color = previewStyles.color;
-      title.textContent = getEditorCopyLabel(copy);
+      title.textContent = getEditorCommittedTitle(copy);
     }
   }
   const overlay = document.getElementById('editor-modal-title-overlay');
   const overlayTitle = overlay?.querySelector('span');
   if (overlay) {
-    const hasCommittedTitle = Boolean(String(copy.title || '').trim());
+    const hasCommittedTitle = Boolean(getEditorCommittedTitle(copy));
     overlay.classList.toggle('is-empty', !hasCommittedTitle);
     overlay.style.left = `${position.x}%`;
     overlay.style.top = `${position.y}%`;
@@ -3654,7 +3685,7 @@ function updateEditorPreviewChip(projectId) {
     overlay.style.pointerEvents = hasCommittedTitle ? 'auto' : 'none';
     if (overlayTitle) {
       overlayTitle.style.color = previewStyles.color;
-      overlayTitle.textContent = getEditorCopyLabel(copy);
+      overlayTitle.textContent = getEditorCommittedTitle(copy);
     }
   }
   const previewVideo = document.getElementById('editor-modal-preview-video');
@@ -3774,6 +3805,10 @@ function updateEditorCopyField(projectId, field, value) {
     nextValue = value === true || value === 'true';
   }
   copy[field] = nextValue;
+  if (field === 'backgroundId') {
+    const background = getEditorBackgroundOptionById(nextValue);
+    copy.backgroundColor = background.backgroundColor;
+  }
   if (field === 'title') {
     copy.titleDraft = null;
   }
@@ -3831,7 +3866,8 @@ function copyEditorConfigToAll(projectId) {
   if (!project) return;
   const copy = getEditorActiveCopy(project);
   if (!copy) return;
-  const title = String(copy.titleDraft ?? copy.title ?? '').trim();
+  const title = getEditorCommittedTitle(copy);
+  const background = getEditorBackgroundOptionById(copy.backgroundId);
 
   project.copies = project.copies.map(item => ({
     ...item,
@@ -3841,7 +3877,7 @@ function copyEditorConfigToAll(projectId) {
     titlePositionY: copy.titlePositionY,
     font: copy.font,
     backgroundId: copy.backgroundId,
-    backgroundColor: copy.backgroundColor,
+    backgroundColor: copy.backgroundColor || background.backgroundColor,
     showBackground: copy.showBackground,
     size: copy.size,
     opacity: copy.opacity,
@@ -3885,8 +3921,7 @@ function saveEditorProjectAndClose(projectId) {
   const project = getEditorProject(projectId);
   if (project) {
     const copy = getEditorActiveCopy(project);
-    if (copy && copy.titleDraft !== null) {
-      copy.title = String(copy.titleDraft || '').trim();
+    if (copy) {
       copy.titleDraft = null;
     }
     syncEditorProjectMetadata(project);
@@ -4557,24 +4592,35 @@ function parseEditorFilterCommand(inputName, overlayFileName, outputName, width,
   const sizes = applyVariantFilterToSize(width, height, plan);
   const titlePosition = getEditorTitlePosition(copy);
   const videoChain = [
-    `tpad=start_duration=${(plan.delayMs / 1000).toFixed(3)}:start_mode=clone`,
+    `trim=0:${plan.targetEnd}`,
+    'setpts=PTS-STARTPTS',
     `scale=${sizes.zoomW}:${sizes.zoomH}`,
     `crop=${sizes.cropW}:${sizes.cropH}:(in_w-out_w)/2:(in_h-out_h)/2`,
     `scale=${width}:${height}`,
     `eq=brightness=${plan.brightness}:gamma=${plan.gamma}`,
     `setpts=PTS/${plan.speed}`,
+    `tpad=start_duration=${(plan.delayMs / 1000).toFixed(3)}:start_mode=clone`,
+    'fps=30',
   ].join(',');
   const overlayX = escapeFFmpegFilterExpression(`max(0,min(W-w,(W*${(titlePosition.x / 100).toFixed(4)})-(w/2)))`);
   const overlayY = escapeFFmpegFilterExpression(`max(0,min(H-h,(H*${(titlePosition.y / 100).toFixed(4)})-(h/2)))`);
-  const base = hasAudio
-    ? `[0:v]${videoChain}[vbase];[1:v]format=rgba[voverlay];[0:a]adelay=${plan.delayMs}|${plan.delayMs},atempo=${plan.speed}[aout];[vbase][voverlay]overlay=x=${overlayX}:y=${overlayY}:enable='between(t,0,${plan.targetEnd})'[vout]`
-    : `[0:v]${videoChain}[vbase];[1:v]format=rgba[voverlay];[vbase][voverlay]overlay=x=${overlayX}:y=${overlayY}:enable='between(t,0,${plan.targetEnd})'[vout]`;
-  const args = [
-    '-i', inputName,
-    '-loop', '1', '-i', overlayFileName,
-    '-filter_complex', base,
-    '-map', '[vout]',
-  ];
+  const args = ['-i', inputName];
+  const filterSegments = [];
+
+  if (overlayFileName) {
+    args.push('-loop', '1', '-i', overlayFileName);
+    filterSegments.push(`[0:v]${videoChain}[vbase]`);
+    filterSegments.push(`[1:v]format=rgba[voverlay]`);
+    filterSegments.push(`[vbase][voverlay]overlay=x=${overlayX}:y=${overlayY}:enable='between(t,0,${plan.targetEnd})'[vout]`);
+  } else {
+    filterSegments.push(`[0:v]${videoChain}[vout]`);
+  }
+
+  if (hasAudio) {
+    filterSegments.push(`[0:a]atrim=0:${plan.targetEnd},atempo=${plan.speed},adelay=${plan.delayMs}|${plan.delayMs},asetpts=N/SR/TB[aout]`);
+  }
+
+  args.push('-filter_complex', filterSegments.join(';'), '-map', '[vout]');
 
   if (hasAudio) {
     args.push('-map', '[aout]', '-c:a', 'aac', '-b:a', '128k');
@@ -4587,13 +4633,14 @@ function parseEditorFilterCommand(inputName, overlayFileName, outputName, width,
 }
 
 async function createEditorTitleOverlay(project, copy, width, height) {
+  const committedTitle = getEditorCommittedTitle(copy);
+  if (!committedTitle) return null;
+
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
-  const label = getEditorCopyLabel(copy);
   const fontSize = Math.max(24, Math.min(100, Number(copy.size || 54)));
   const padding = Math.max(6, Math.min(42, Number(copy.padding || 18)));
   const fontOption = getEditorFontOptionByFamily(copy.font);
-  const bgOption = getEditorBackgroundOptionById(copy.backgroundId);
   const maxWidth = Math.max(160, Math.round((width || 1080) * 0.72));
   const titleColor = copy.showBackground && isLightColor(copy.backgroundColor) ? '#111827' : '#ffffff';
 
@@ -4603,7 +4650,7 @@ async function createEditorTitleOverlay(project, copy, width, height) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  const words = label.split(/\s+/).filter(Boolean);
+  const words = committedTitle.split(/\s+/).filter(Boolean);
   const lines = [];
   let line = '';
   words.forEach(word => {
@@ -4624,10 +4671,7 @@ async function createEditorTitleOverlay(project, copy, width, height) {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (copy.showBackground) {
-    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-    gradient.addColorStop(0, copy.backgroundColor);
-    gradient.addColorStop(1, bgOption.end);
-    ctx.fillStyle = gradient;
+    ctx.fillStyle = copy.backgroundColor || '#111827';
     ctx.globalAlpha = Math.max(0, Math.min(100, Number(copy.opacity || 88))) / 100;
     roundRect(ctx, 0, 0, canvas.width, canvas.height, Math.min(24, padding + 4));
     ctx.fill();
@@ -4671,9 +4715,6 @@ function roundRect(ctx, x, y, width, height, radius) {
 
 async function buildEditorTitleOverlay(project, copy, width, height) {
   const overlay = await createEditorTitleOverlay(project, copy, width, height);
-  if (!overlay) {
-    throw new Error('No se pudo crear la vista previa del titulo.');
-  }
   return overlay;
 }
 
@@ -4690,15 +4731,18 @@ function estimateSimilarity(signature, previousCopies) {
 }
 
 async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, width, height, hasAudio, previousAccepted) {
-  const maxAttempts = 4;
+  const maxAttempts = 8;
   let lastError = null;
   const outputName = `variant_${String(copy.index).padStart(3, '0')}.mp4`;
   const reportProgress = createEditorCopyProgressReporter(copy);
+  const overlay = await buildEditorTitleOverlay(project, copy, width, height);
+  const overlayName = overlay ? `editor-overlay-${project.id}-${copy.index}.png` : '';
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const plan = createVariantPlan(project, copy, attempt);
     const editorStatusEl = document.getElementById('editor-generate-status') || document.body;
     let output = null;
+    let overlayWritten = false;
 
     try {
       copy.status = 'processing';
@@ -4707,10 +4751,20 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
       syncEditorProjectMetadata(project);
       refreshEditorUi();
 
-      const recording = await composeEditorVariantVideo(project, copy, width, height, plan, hasAudio, reportProgress);
-      reportProgress(87, 'Transcodificando el resultado...');
-      output = await transcodeEditorRecording(ffmpegRuntime, recording, outputName, hasAudio, reportProgress);
-      const { blob, file, url } = output;
+      if (overlay?.blob) {
+        await ffmpegRuntime.instance.writeFile(overlayName, await ffmpegRuntime.fetchFile(overlay.blob));
+        overlayWritten = true;
+      }
+
+      reportProgress(40, 'Aplicando las transformaciones...');
+      const args = parseEditorFilterCommand(inputName, overlayWritten ? overlayName : '', outputName, width, height, plan, copy, hasAudio);
+      await execEditorFFmpegChecked(ffmpegRuntime, args, reportProgress);
+      reportProgress(94, 'Analizando la variante...');
+      const data = await ffmpegRuntime.instance.readFile(outputName);
+      const blob = new Blob([data], { type: 'video/mp4' });
+      const file = new File([blob], outputName, { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+      output = { blob, file, url };
       const frame = await withTimeout(
         loadVideoFrame(file, 0.45),
         EDITOR_POSTPROCESS_TIMEOUT_MS,
@@ -4755,6 +4809,11 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
       copy.status = 'processing';
       reportProgress(Math.max(copy.progress, 25), 'Reintentando la copia...');
       await ffmpegRuntime.instance?.deleteFile(outputName).catch(() => {});
+    } finally {
+      await ffmpegRuntime.instance?.deleteFile(outputName).catch(() => {});
+      if (overlayWritten) {
+        await ffmpegRuntime.instance?.deleteFile(overlayName).catch(() => {});
+      }
     }
   }
 
