@@ -1,6 +1,6 @@
 # ReelFlow — Frontend Scaffold
 
-Panel de publicación y edición de reels para Instagram y TikTok.
+Panel de publicación y edición de reels para Instagram con Meta API.
 
 ## Estructura del proyecto
 
@@ -23,7 +23,7 @@ reelflow/
 ## Páginas incluidas
 
 - **Dashboard** — Estadísticas y resumen de actividad
-- **Cuentas** — Conexión OAuth de Instagram y TikTok
+- **Cuentas** — Conexión OAuth de Instagram
 - **Publicar** — Subida y publicación de reels
 - **Editor** — Video base + hasta 15 videos de referencia seleccionables
 - **Historial** — Log de publicaciones y formatos
@@ -37,8 +37,6 @@ Para Vercel, configurar estas variables en:
 ```env
 INSTAGRAM_APP_ID=1428803625601557
 INSTAGRAM_APP_SECRET=
-TIKTOK_CLIENT_KEY=
-TIKTOK_CLIENT_SECRET=
 BACKEND_URL=https://reelflow-topaz.vercel.app
 ```
 
@@ -46,7 +44,6 @@ BACKEND_URL=https://reelflow-topaz.vercel.app
 
 ```
 Instagram: https://reelflow-topaz.vercel.app/auth/instagram/callback
-TikTok:    https://reelflow-topaz.vercel.app/auth/tiktok/callback
 Data deletion: https://reelflow-topaz.vercel.app/eliminacion-datos.html
 ```
 
@@ -80,36 +77,6 @@ La ruta `api/instagram/publish.js` publica un Reel desde una URL pública de vid
 
 ```
 /api/instagram/publish
-```
-
-La ruta `api/tiktok/exchange.js` cambia el `code` OAuth de TikTok por tokens:
-
-```
-/api/tiktok/exchange
-```
-
-La ruta `api/tiktok/publish.js` publica con TikTok Direct Post usando una URL pública de video:
-
-```
-/api/tiktok/publish
-```
-
-TikTok descarga el video desde una URL propia del proyecto mediante:
-
-```
-/api/tiktok/media
-```
-
-Para Direct Post, el OAuth de TikTok debe pedir el scope:
-
-```env
-user.info.basic,video.publish
-```
-
-Si se usa `PULL_FROM_URL`, TikTok exige verificar el dominio público del video en el portal de Developers. Para ReelFlow, verificar:
-
-```text
-reelflow-topaz.vercel.app
 ```
 
 La ruta `api/blob/upload.js` habilita uploads directos de video a Vercel Blob:

@@ -51,19 +51,6 @@ img, video { max-width: 100%; display: block; }
 .ig-gradient {
   background: linear-gradient(135deg, var(--ig-1), var(--ig-2), var(--ig-3), var(--ig-4), var(--ig-5));
 }
-.tt-gradient {
-  background: var(--tt-1);
-  position: relative;
-  overflow: hidden;
-}
-.tt-gradient::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, var(--tt-2) 0%, var(--tt-accent) 100%);
-  opacity: 0.7;
-}
-.tt-gradient svg { position: relative; z-index: 1; }
 
 .ig-color { color: var(--ig-3); }
 

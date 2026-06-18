@@ -3175,7 +3175,7 @@ function init() {
   setupAiVideoCreatorEvents();
 
   state.accounts = state.accounts.filter(account => account.platform === 'ig');
-  state.history = state.history.filter(item => item.platform !== 'tt');
+  state.history = state.history.filter(item => ['ig', 'ai'].includes(item.platform));
   state.selectedAccounts = new Set([...state.selectedAccounts].filter(id => state.accounts.some(account => account.id === id)));
   saveAccounts();
   saveHistory();

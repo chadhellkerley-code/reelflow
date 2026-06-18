@@ -3,10 +3,6 @@
     {
       "source": "/auth/instagram/callback",
       "destination": "/auth/instagram/callback/index.html"
-    },
-    {
-      "source": "/auth/tiktok/callback",
-      "destination": "/auth/tiktok/callback/index.html"
     }
   ]
 }

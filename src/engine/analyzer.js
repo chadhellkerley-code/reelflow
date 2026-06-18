@@ -1,6 +1,8 @@
+import { generateGeminiContent } from './geminiClient.js';
 import { parseGeminiJson } from './transcriber.js';
 
 const DEFAULT_GEMINI_MODEL = 'gemini-1.5-pro';
+const DEFAULT_GEMINI_FALLBACK_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 const CONTENT_TYPES = new Set(['list', 'story', 'advice', 'controversial', 'educational']);
 const ENGAGEMENT_TRIGGERS = new Set(['comment', 'share', 'save', 'follow']);
 
@@ -61,9 +63,8 @@ export async function analyzeTranscript(transcription, options = {}) {
   const model = String(options.model || window.GEMINI_MODEL || DEFAULT_GEMINI_MODEL).trim();
   if (!apiKey) throw new Error('Falta configurar window.GEMINI_API_KEY.');
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const prompt = `
-Analiza esta transcripcion de un video corto para Instagram Reels/TikTok.
+Analiza esta transcripcion de un video corto para Instagram Reels.
 Detecta estructura, intencion y momentos de edicion.
 Devolve SOLO JSON puro, sin markdown ni texto adicional.
 
@@ -87,25 +88,22 @@ Formato exacto:
 }`.trim();
 
   options.onProgress?.({ step: 'analysis', message: 'Analizando estructura con Gemini...' });
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-    },
-    body: JSON.stringify({
+  const { payload } = await generateGeminiContent({
+    apiKey,
+    model,
+    fallbackModels: options.fallbackModels || options.geminiFallbackModels || window.GEMINI_FALLBACK_MODELS || DEFAULT_GEMINI_FALLBACK_MODELS,
+    retries: options.geminiRetries ?? 2,
+    onProgress: options.onProgress,
+    step: 'analysis',
+    purpose: 'Analisis Gemini',
+    body: {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: 0.2,
         responseMimeType: 'application/json',
       },
-    }),
+    },
   });
-
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || 'Gemini no pudo analizar la transcripcion.');
-  }
 
   const text = payload?.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('\n');
   return normalizeAnalysis(parseGeminiJson(text), transcription);
