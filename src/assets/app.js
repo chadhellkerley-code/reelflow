@@ -16,6 +16,7 @@ const state = {
   editorModalProjectId: null,
   editorModalCopyIndex: 0,
   editorPreviewMode: 'original',
+  editorTitleDrag: null,
   editorQueueRunning: false,
   referenceVideos: [],
   selectedReferences: new Set(),
@@ -155,6 +156,9 @@ const EDITOR_BACKGROUND_OPTIONS = Array.from({ length: 50 }, (_, index) => makeE
 
 const EDITOR_DEFAULT_COPY = () => ({
   title: '',
+  titleDraft: null,
+  titlePositionX: 50,
+  titlePositionY: 70,
   font: EDITOR_FONT_OPTIONS[0].family,
   backgroundId: EDITOR_BACKGROUND_OPTIONS[0].id,
   backgroundColor: '#111827',
@@ -546,6 +550,7 @@ function openModal(title, html) {
 }
 
 function closeModal() {
+  stopEditorTitleDrag();
   document.getElementById('modal-overlay').classList.remove('open');
 }
 
@@ -2948,6 +2953,44 @@ function getEditorFontOptionByFamily(family) {
   return EDITOR_FONT_OPTIONS.find(option => option.family === family) || EDITOR_FONT_OPTIONS[0];
 }
 
+function getEditorTitlePosition(copy) {
+  return {
+    x: clampNumber(copy?.titlePositionX, 0, 100, 50),
+    y: clampNumber(copy?.titlePositionY, 0, 100, 70),
+  };
+}
+
+function getEditorTitlePreviewStyle(copy, background) {
+  const alpha = Math.max(0, Math.min(100, Number(copy.opacity || 88))) / 100;
+  if (!copy.showBackground) {
+    return {
+      background: 'transparent',
+      color: '#ffffff',
+    };
+  }
+
+  return {
+    background: `linear-gradient(135deg, ${hexToRgba(copy.backgroundColor, alpha)}, ${background.end})`,
+    color: isLightColor(copy.backgroundColor) ? '#111827' : '#ffffff',
+  };
+}
+
+function getEditorTitleOverlayStyle(copy, background) {
+  const position = getEditorTitlePosition(copy);
+  const preview = getEditorTitlePreviewStyle(copy, background);
+  const color = preview.color;
+  return `
+    left:${position.x}%;
+    top:${position.y}%;
+    background:${preview.background};
+    color:${color};
+    padding:${Number(copy.padding || 18)}px;
+    font-size:${Number(copy.size || 54)}px;
+    font-family:${copy.font};
+    ${copy.showBackground ? '' : 'border:none;box-shadow:none;backdrop-filter:none;'}
+  `;
+}
+
 function cloneEditorCopyConfig(copy, index = copy?.index || 1) {
   const base = EDITOR_DEFAULT_COPY();
   return {
@@ -2956,6 +2999,7 @@ function cloneEditorCopyConfig(copy, index = copy?.index || 1) {
     index,
     id: copy?.id || `copy_${Date.now()}_${index}`,
     title: copy?.title || '',
+    titleDraft: copy?.titleDraft ?? null,
     status: copy?.status || 'queued',
     progress: Number(copy?.progress || 0),
     output: copy?.output || null,
@@ -2973,6 +3017,9 @@ function createEditorCopy(project, index, sourceCopy = null) {
     id: `copy_${project.id}_${index}_${Date.now()}`,
     index,
     title: config.title || '',
+    titleDraft: config.titleDraft ?? null,
+    titlePositionX: Number.isFinite(Number(config.titlePositionX)) ? Number(config.titlePositionX) : 50,
+    titlePositionY: Number.isFinite(Number(config.titlePositionY)) ? Number(config.titlePositionY) : 70,
     backgroundId: config.backgroundId || EDITOR_BACKGROUND_OPTIONS[0].id,
     backgroundColor: config.backgroundColor || '#111827',
     showBackground: config.showBackground !== false,
@@ -3006,6 +3053,7 @@ function createEditorProject(file) {
     height: 0,
     activeCopyIndex: 0,
     previewMode: 'original',
+    zip: null,
     copies: [],
   };
   project.copies = [createEditorCopy(project, 1)];
@@ -3221,6 +3269,7 @@ function removeEditorProject(projectId) {
   if (!project) return;
 
   if (project.previewUrl) URL.revokeObjectURL(project.previewUrl);
+  if (project.zip?.url) URL.revokeObjectURL(project.zip.url);
   project.copies.forEach(copy => {
     if (copy.output?.url) URL.revokeObjectURL(copy.output.url);
     if (copy.overlayUrl) URL.revokeObjectURL(copy.overlayUrl);
@@ -3245,6 +3294,7 @@ function clearEditorWorkspace() {
 
   state.editorProjects.forEach(project => {
     if (project.previewUrl) URL.revokeObjectURL(project.previewUrl);
+    if (project.zip?.url) URL.revokeObjectURL(project.zip.url);
     project.copies.forEach(copy => {
       if (copy.output?.url) URL.revokeObjectURL(copy.output.url);
       if (copy.overlayUrl) URL.revokeObjectURL(copy.overlayUrl);
@@ -3283,10 +3333,12 @@ function renderEditorProjectModal(projectId) {
   const previewSrc = state.editorPreviewMode === 'generated' && activeCopy?.output?.url
     ? activeCopy.output.url
     : project.previewUrl;
-  const title = getEditorCopyLabel(activeCopy);
-  const previewChipStyle = activeCopy.showBackground
-    ? `background:linear-gradient(135deg, ${hexToRgba(activeCopy.backgroundColor, Math.max(0, Math.min(100, activeCopy.opacity)) / 100)}, ${background.end});padding:${activeCopy.padding}px;font-size:${activeCopy.size}px;font-family:${activeCopy.font};`
-    : `background:transparent;padding:${activeCopy.padding}px;font-size:${activeCopy.size}px;font-family:${activeCopy.font};`;
+  const committedTitle = getEditorCopyLabel(activeCopy);
+  const draftTitle = String(activeCopy.titleDraft || '');
+  const titleValue = draftTitle || activeCopy.title || '';
+  const previewChipStyle = getEditorTitlePreviewStyle(activeCopy, background);
+  const titleOverlayStyle = getEditorTitleOverlayStyle(activeCopy, background);
+  const hasCommittedTitle = Boolean(String(activeCopy.title || '').trim());
   const tabs = project.copies.map(copy => `
     <button class="editor-copy-tab ${copy.index - 1 === project.activeCopyIndex ? 'active' : ''}" onclick="selectEditorCopy('${project.id}', ${copy.index - 1})">
       ${copy.index}. copia${copy.index}
@@ -3297,14 +3349,23 @@ function renderEditorProjectModal(projectId) {
     <div class="editor-modal">
       <div class="editor-modal-preview">
         <div class="editor-modal-title">${escapeHtml(project.name)}</div>
-        <div class="editor-config-preview">
+        <div class="editor-config-preview editor-preview-stage">
           <video id="editor-modal-preview-video" src="${previewSrc}" muted playsinline controls></video>
+          <div
+            class="editor-preview-title-overlay ${hasCommittedTitle ? '' : 'is-empty'}"
+            id="editor-modal-title-overlay"
+            style="${titleOverlayStyle}"
+            ${hasCommittedTitle ? `onpointerdown="startEditorTitleDrag(event, '${project.id}')"` : ''}
+          >
+            <span>${escapeHtml(committedTitle || ' ')}</span>
+          </div>
         </div>
         <div class="editor-action-row">
           <button class="btn btn-outline btn-sm ${state.editorPreviewMode === 'original' ? 'active' : ''}" onclick="setEditorPreviewOriginal('${project.id}')">Preview original</button>
           <button class="btn btn-outline btn-sm" onclick="copyEditorConfigToAll('${project.id}')">Copiar config actual a todas</button>
           <button class="btn btn-outline btn-sm" onclick="resetEditorCurrentCopy('${project.id}')">Reset esta copia</button>
         </div>
+        <div class="editor-scroll-note">Escribí el título y presioná Enter para aplicarlo al video. Después lo podés arrastrar en la vista previa.</div>
         <div class="editor-control-row">
           <label for="editor-copy-count">Cantidad de copias</label>
           <input type="number" id="editor-copy-count" class="form-input editor-input" min="1" max="500" value="${project.copies.length}" onchange="setEditorCopyCount('${project.id}', this.value)" />
@@ -3314,7 +3375,15 @@ function renderEditorProjectModal(projectId) {
       <div class="editor-config-area">
         <div class="editor-control-group">
           <label>TITULO DE ESTA COPIA</label>
-          <input type="text" id="editor-copy-title" class="form-input editor-input" value="${escapeHtml(activeCopy.title || '')}" placeholder="Ej: 25. copia25 🔥" oninput="updateEditorCopyField('${project.id}', 'title', this.value)" />
+          <input
+            type="text"
+            id="editor-copy-title"
+            class="form-input editor-input"
+            value="${escapeHtml(titleValue)}"
+            placeholder="Ej: 25. copia25 🔥"
+            oninput="updateEditorCopyDraft('${project.id}', this.value)"
+            onkeydown="handleEditorTitleKeydown(event, '${project.id}')"
+          />
         </div>
 
         <div class="editor-config-grid">
@@ -3394,15 +3463,15 @@ function renderEditorProjectModal(projectId) {
           </div>
           <div class="editor-control-row">
             <label for="editor-range-end">Hasta</label>
-            <input type="range" id="editor-range-end" min="1" max="${Math.max(1, Math.round(project.duration || 30))}" step="1" value="${Math.max(1, Math.min(Math.round(project.duration || 30), Number(activeCopy.rangeEnd || 10)))}" oninput="updateEditorCopyField('${project.id}', 'rangeEnd', this.value)" />
+            <input type="range" id="editor-range-end" min="1" max="${Math.max(1, Math.round(project.duration || 30))}" step="1" value="${Math.max(1, Math.min(Math.round(project.duration || 30), Number(activeCopy.rangeEnd || 10)))}" ${activeCopy.durationMode === 'all' ? 'disabled' : ''} oninput="updateEditorCopyField('${project.id}', 'rangeEnd', this.value)" />
             <div class="range-meta"><span>0s</span><span>${Math.max(1, Math.min(Math.round(project.duration || 30), Number(activeCopy.rangeEnd || 10)))}s</span><span>${Math.round(project.duration || 30)}s</span></div>
           </div>
         </div>
 
         <div class="editor-control-group">
           <label>Vista previa de estilo</label>
-          <div class="editor-title-preview ${activeCopy.showBackground ? '' : 'hidden-bg'}" id="editor-title-preview" style="${previewChipStyle}">
-            <span style="color:${activeCopy.showBackground && isLightColor(activeCopy.backgroundColor) ? '#111827' : '#ffffff'}">${escapeHtml(title || 'TITULO DE ESTA COPIA')}</span>
+          <div class="editor-title-preview ${activeCopy.showBackground ? '' : 'hidden-bg'}" id="editor-title-preview" style="background:${previewChipStyle.background};padding:${Number(activeCopy.padding || 18)}px;font-size:${Number(activeCopy.size || 54)}px;font-family:${activeCopy.font};">
+            <span style="color:${previewChipStyle.color}">${escapeHtml(committedTitle || 'TITULO DE ESTA COPIA')}</span>
           </div>
           <div class="editor-scroll-note">Fuente: ${escapeHtml(font.label)} · Fondo: ${escapeHtml(background.label)}</div>
         </div>
@@ -3437,26 +3506,122 @@ function updateEditorPreviewChip(projectId) {
   if (!project) return;
   const copy = getEditorActiveCopy(project);
   if (!copy) return;
+  const bg = getEditorBackgroundOptionById(copy.backgroundId);
+  const previewStyles = getEditorTitlePreviewStyle(copy, bg);
+  const position = getEditorTitlePosition(copy);
   const chip = document.getElementById('editor-title-preview');
   const title = chip?.querySelector('span');
   if (chip) {
-    const bg = getEditorBackgroundOptionById(copy.backgroundId);
     chip.classList.toggle('hidden-bg', !copy.showBackground);
     chip.style.padding = `${Number(copy.padding || 18)}px`;
     chip.style.fontSize = `${Number(copy.size || 54)}px`;
     chip.style.fontFamily = copy.font;
-    chip.style.background = copy.showBackground
-      ? `linear-gradient(135deg, ${hexToRgba(copy.backgroundColor, Math.max(0, Math.min(100, Number(copy.opacity || 88))) / 100)}, ${bg.end})`
-      : 'transparent';
+    chip.style.background = previewStyles.background;
     if (title) {
-      title.style.color = copy.showBackground && isLightColor(copy.backgroundColor) ? '#111827' : '#ffffff';
+      title.style.color = previewStyles.color;
       title.textContent = getEditorCopyLabel(copy);
+    }
+  }
+  const overlay = document.getElementById('editor-modal-title-overlay');
+  const overlayTitle = overlay?.querySelector('span');
+  if (overlay) {
+    const hasCommittedTitle = Boolean(String(copy.title || '').trim());
+    overlay.classList.toggle('is-empty', !hasCommittedTitle);
+    overlay.style.left = `${position.x}%`;
+    overlay.style.top = `${position.y}%`;
+    overlay.style.padding = `${Number(copy.padding || 18)}px`;
+    overlay.style.fontSize = `${Number(copy.size || 54)}px`;
+    overlay.style.fontFamily = copy.font;
+    overlay.style.background = previewStyles.background;
+    overlay.style.color = previewStyles.color;
+    overlay.style.cursor = hasCommittedTitle ? 'grab' : 'default';
+    overlay.style.pointerEvents = hasCommittedTitle ? 'auto' : 'none';
+    if (overlayTitle) {
+      overlayTitle.style.color = previewStyles.color;
+      overlayTitle.textContent = getEditorCopyLabel(copy);
     }
   }
   const previewVideo = document.getElementById('editor-modal-preview-video');
   if (previewVideo) {
     previewVideo.src = state.editorPreviewMode === 'generated' && copy.output?.url ? copy.output.url : project.previewUrl;
   }
+}
+
+function updateEditorCopyDraft(projectId, value) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+  const copy = getEditorActiveCopy(project);
+  if (!copy) return;
+  copy.titleDraft = String(value ?? '');
+  syncEditorProjectMetadata(project);
+}
+
+function commitEditorTitle(projectId) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+  const copy = getEditorActiveCopy(project);
+  if (!copy) return;
+  const nextTitle = String(copy.titleDraft ?? copy.title ?? '').trim();
+  copy.title = nextTitle;
+  copy.titleDraft = null;
+  syncEditorProjectMetadata(project);
+  updateEditorPreviewChip(projectId);
+  renderEditorProjectModal(projectId);
+  updateEditorCounters();
+}
+
+function handleEditorTitleKeydown(event, projectId) {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  commitEditorTitle(projectId);
+}
+
+function updateEditorTitlePosition(projectId, clientX, clientY) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+  const copy = getEditorActiveCopy(project);
+  if (!copy) return;
+  const stage = document.getElementById('editor-modal-title-overlay')?.closest('.editor-preview-stage');
+  if (!stage) return;
+
+  const rect = stage.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  copy.titlePositionX = clampNumber(((clientX - rect.left) / rect.width) * 100, 0, 100, 50);
+  copy.titlePositionY = clampNumber(((clientY - rect.top) / rect.height) * 100, 0, 100, 70);
+  syncEditorProjectMetadata(project);
+  updateEditorPreviewChip(projectId);
+}
+
+function startEditorTitleDrag(event, projectId) {
+  const project = getEditorProject(projectId);
+  const copy = getEditorActiveCopy(project);
+  if (!project || !copy || !String(copy.title || '').trim()) return;
+
+  event.preventDefault();
+  state.editorTitleDrag = { projectId };
+  updateEditorTitlePosition(projectId, event.clientX, event.clientY);
+
+  const stop = () => stopEditorTitleDrag();
+  const move = dragEvent => {
+    if (!state.editorTitleDrag || state.editorTitleDrag.projectId !== projectId) return;
+    updateEditorTitlePosition(projectId, dragEvent.clientX, dragEvent.clientY);
+  };
+
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', stop, { once: true });
+  document.addEventListener('pointercancel', stop, { once: true });
+  state.editorTitleDrag.cleanup = () => {
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', stop);
+    document.removeEventListener('pointercancel', stop);
+  };
+}
+
+function stopEditorTitleDrag() {
+  if (!state.editorTitleDrag) return;
+  state.editorTitleDrag.cleanup?.();
+  state.editorTitleDrag = null;
 }
 
 function selectEditorCopy(projectId, copyIndex) {
@@ -3493,6 +3658,9 @@ function updateEditorCopyField(projectId, field, value) {
     nextValue = value === true || value === 'true';
   }
   copy[field] = nextValue;
+  if (field === 'title') {
+    copy.titleDraft = null;
+  }
   syncEditorProjectMetadata(project);
   updateEditorPreviewChip(projectId);
   updateEditorCounters();
@@ -3547,9 +3715,14 @@ function copyEditorConfigToAll(projectId) {
   if (!project) return;
   const copy = getEditorActiveCopy(project);
   if (!copy) return;
+  const title = String(copy.titleDraft ?? copy.title ?? '').trim();
 
   project.copies = project.copies.map(item => ({
     ...item,
+    title,
+    titleDraft: null,
+    titlePositionX: copy.titlePositionX,
+    titlePositionY: copy.titlePositionY,
     font: copy.font,
     backgroundId: copy.backgroundId,
     backgroundColor: copy.backgroundColor,
@@ -3595,6 +3768,11 @@ function setEditorPreviewOriginal(projectId) {
 function saveEditorProjectAndClose(projectId) {
   const project = getEditorProject(projectId);
   if (project) {
+    const copy = getEditorActiveCopy(project);
+    if (copy && copy.titleDraft !== null) {
+      copy.title = String(copy.titleDraft || '').trim();
+      copy.titleDraft = null;
+    }
     syncEditorProjectMetadata(project);
     updateEditorCounters();
   }
@@ -3610,29 +3788,67 @@ function deleteEditorProject(projectId) {
 function downloadEditorProjectZip(projectId) {
   const project = getEditorProject(projectId);
   if (!project) return;
-  const files = project.copies.filter(copy => copy.status === 'ready' && copy.output?.blob).map(copy => ({
-    name: copy.output.file.name,
-    blob: copy.output.blob,
-  }));
+  if (project.zip?.blob) {
+    const link = document.createElement('a');
+    if (!project.zip.url) project.zip.url = URL.createObjectURL(project.zip.blob);
+    link.href = project.zip.url;
+    link.download = project.zip.name || `${safeFilePart(project.name)}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    return;
+  }
+
+  const files = project.copies
+    .filter(copy => copy.status === 'ready' && copy.output?.blob)
+    .map(copy => ({
+      name: copy.output.file.name,
+      blob: copy.output.blob,
+    }));
   if (!files.length) {
     toast('Todavía no hay copias listas para zip', 'error');
     return;
   }
 
   buildZipBlob(files).then(zipBlob => {
+    project.zip = {
+      blob: zipBlob,
+      name: `${safeFilePart(project.name)}.zip`,
+      url: URL.createObjectURL(zipBlob),
+    };
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(zipBlob);
-    link.download = `${safeFilePart(project.name)}.zip`;
+    link.href = project.zip.url;
+    link.download = project.zip.name;
     document.body.appendChild(link);
     link.click();
     link.remove();
-    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
   }).catch(error => {
     toast(getErrorMessage(error, 'No se pudo crear el zip'), 'error');
   });
 }
 
+async function buildEditorProjectZip(project) {
+  const files = project.copies
+    .filter(copy => copy.status === 'ready' && copy.output?.blob)
+    .map(copy => ({
+      name: copy.output.file.name,
+      blob: copy.output.blob,
+    }));
+
+  if (!files.length) return null;
+  const zipBlob = await buildZipBlob(files);
+  if (project.zip?.url) URL.revokeObjectURL(project.zip.url);
+  project.zip = {
+    blob: zipBlob,
+    name: `${safeFilePart(project.name)}.zip`,
+    url: URL.createObjectURL(zipBlob),
+  };
+  return project.zip;
+}
+
 function clearEditorQueueState(project) {
+  if (project.zip?.url) URL.revokeObjectURL(project.zip.url);
+  project.zip = null;
   project.copies.forEach(copy => {
     if (copy.output?.url) URL.revokeObjectURL(copy.output.url);
     copy.output = null;
@@ -3921,8 +4137,9 @@ function getEditorFilterGraph(width, height, plan, copy, hasAudio) {
   };
 }
 
-function parseEditorFilterCommand(inputName, overlayFileName, outputName, width, height, plan, hasAudio) {
+function parseEditorFilterCommand(inputName, overlayFileName, outputName, width, height, plan, copy, hasAudio) {
   const sizes = applyVariantFilterToSize(width, height, plan);
+  const titlePosition = getEditorTitlePosition(copy);
   const videoChain = [
     `tpad=start_duration=${(plan.delayMs / 1000).toFixed(3)}:start_mode=clone`,
     `scale=${sizes.zoomW}:${sizes.zoomH}`,
@@ -3931,10 +4148,11 @@ function parseEditorFilterCommand(inputName, overlayFileName, outputName, width,
     `eq=brightness=${plan.brightness}:gamma=${plan.gamma}`,
     `setpts=PTS/${plan.speed}`,
   ].join(',');
-  const overlayY = Math.max(24, Math.round(height * 0.70));
+  const overlayX = `max(0,min(W-w,(W*${(titlePosition.x / 100).toFixed(4)})-(w/2)))`;
+  const overlayY = `max(0,min(H-h,(H*${(titlePosition.y / 100).toFixed(4)})-(h/2)))`;
   const base = hasAudio
-    ? `[0:v]${videoChain}[vbase];[1:v]format=rgba[voverlay];[0:a]adelay=${plan.delayMs}|${plan.delayMs},atempo=${plan.speed}[aout];[vbase][voverlay]overlay=x=(W-w)/2:y=${overlayY}-h/2:enable='between(t,0,${plan.targetEnd})'[vout]`
-    : `[0:v]${videoChain}[vbase];[1:v]format=rgba[voverlay];[vbase][voverlay]overlay=x=(W-w)/2:y=${overlayY}-h/2:enable='between(t,0,${plan.targetEnd})'[vout]`;
+    ? `[0:v]${videoChain}[vbase];[1:v]format=rgba[voverlay];[0:a]adelay=${plan.delayMs}|${plan.delayMs},atempo=${plan.speed}[aout];[vbase][voverlay]overlay=x=${overlayX}:y=${overlayY}:enable='between(t,0,${plan.targetEnd})'[vout]`
+    : `[0:v]${videoChain}[vbase];[1:v]format=rgba[voverlay];[vbase][voverlay]overlay=x=${overlayX}:y=${overlayY}:enable='between(t,0,${plan.targetEnd})'[vout]`;
   const args = [
     '-i', inputName,
     '-loop', '1', '-i', overlayFileName,
@@ -4073,7 +4291,7 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
 
       await ffmpegRuntime.instance.writeFile(overlayName, await ffmpegRuntime.fetchFile(new File([overlay.blob], 'overlay.png', { type: 'image/png' })));
 
-      const args = parseEditorFilterCommand(inputName, overlayName, outputName, width, height, plan, hasAudio);
+      const args = parseEditorFilterCommand(inputName, overlayName, outputName, width, height, plan, copy, hasAudio);
 
       await execFFmpegChecked(ffmpegRuntime.instance, args);
       const data = await ffmpegRuntime.instance.readFile(outputName);
@@ -4094,7 +4312,6 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
 
       if (overlay.overlayUrl) URL.revokeObjectURL(overlay.overlayUrl);
 
-      await ffmpegRuntime.instance.deleteFile(inputName).catch(() => {});
       await ffmpegRuntime.instance.deleteFile(overlayName).catch(() => {});
       await ffmpegRuntime.instance.deleteFile(outputName).catch(() => {});
 
@@ -4142,7 +4359,7 @@ async function generateAllEditorVideos() {
   }
 
   try {
-      const runtime = await loadFFmpeg(document.getElementById('editor-generate-status') || document.body);
+    const runtime = await loadFFmpeg(document.getElementById('editor-generate-status') || document.body);
     for (const project of state.editorProjects) {
       const inputName = 'input.mp4';
       try {
@@ -4182,6 +4399,10 @@ async function generateAllEditorVideos() {
           }
           refreshEditorUi();
         }
+
+        await buildEditorProjectZip(project);
+        syncEditorProjectMetadata(project);
+        refreshEditorUi();
       } finally {
         await runtime.instance.deleteFile(inputName).catch(() => {});
       }

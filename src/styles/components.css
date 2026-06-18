@@ -576,6 +576,7 @@
 .editor-config-preview {
   width: 100%;
   aspect-ratio: 9 / 16;
+  position: relative;
   border-radius: 18px;
   overflow: hidden;
   background: #000;
@@ -714,6 +715,44 @@
 .editor-title-preview span {
   max-width: 100%;
   word-break: break-word;
+}
+
+.editor-preview-stage {
+  isolation: isolate;
+}
+
+.editor-preview-title-overlay {
+  position: absolute;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: calc(100% - 24px);
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  backdrop-filter: blur(8px);
+}
+
+.editor-preview-title-overlay span {
+  pointer-events: none;
+  display: block;
+  max-width: 100%;
+  word-break: break-word;
+}
+
+.editor-preview-title-overlay.is-empty {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.editor-preview-title-overlay:active {
+  cursor: grabbing;
 }
 
 .editor-scroll-note {
