@@ -9,6 +9,7 @@ const OUTPUT_WIDTH = 1080;
 const OUTPUT_HEIGHT = 1920;
 const FONT_FILE = 'Inter.ttf';
 const FONT_URL = 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bopsz,wght%5D.ttf';
+const FFMPEG_EXEC_TIMEOUT_MS = 15 * 60 * 1000;
 
 let cachedRuntime = null;
 let fontLoaded = false;
@@ -390,7 +391,7 @@ export async function renderFormatQueue(videoFile, plans, options = {}, segmentI
 
       try {
         const command = buildFFmpegCommand(inputName, outputName, plan, imageInputs);
-        const code = await ffmpeg.exec(command);
+        const code = await ffmpeg.exec(command, FFMPEG_EXEC_TIMEOUT_MS);
         if (code !== 0) throw new Error(`FFmpeg no pudo renderizar ${plan.format}.`);
 
         const data = await ffmpeg.readFile(outputName);

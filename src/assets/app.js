@@ -56,6 +56,8 @@ const GEMINI_INLINE_VIDEO_MAX_BYTES = 18 * 1024 * 1024;
 const FFMPEG_CORE_VERSION = '0.12.10';
 const FFMPEG_FONT_URL = 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bopsz,wght%5D.ttf';
 const FFMPEG_FONT_FILE = 'Inter.ttf';
+const EDITOR_FFMPEG_EXEC_TIMEOUT_MS = 15 * 60 * 1000;
+const EDITOR_POSTPROCESS_TIMEOUT_MS = 15 * 1000;
 
 const EDITOR_FONT_OPTIONS = [
   { label: 'Syne', family: 'Syne, sans-serif' },
@@ -1609,9 +1611,22 @@ async function runFFmpegWithLogs(ffmpeg, task) {
 }
 
 async function execFFmpegChecked(ffmpeg, args, errorMessage = 'FFmpeg no pudo completar la edición.') {
-  const result = await ffmpeg.exec(args);
+  const result = await ffmpeg.exec(args, EDITOR_FFMPEG_EXEC_TIMEOUT_MS);
   if (result !== 0) throw new Error(errorMessage);
   return result;
+}
+
+function withTimeout(promise, timeoutMs, errorMessage) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return promise;
+
+  let timeoutId = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
 }
 
 async function probeDuration(ffmpeg, inputName, outputName) {
@@ -4609,9 +4624,19 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
       reportProgress(87, 'Transcodificando el resultado...');
       const output = await transcodeEditorRecording(ffmpegRuntime, recording, outputName, hasAudio, reportProgress);
       const { blob, file, url } = output;
-      const frame = await loadVideoFrame(file, 0.45).catch(() => null);
+      const frame = await withTimeout(
+        loadVideoFrame(file, 0.45),
+        EDITOR_POSTPROCESS_TIMEOUT_MS,
+        'No se pudo analizar el fotograma generado a tiempo.',
+      ).catch(() => null);
       const hash = frame ? computePhashFromImageData(frame) : [];
-      const audioSignature = hasAudio ? await computeAudioSignature(file).catch(() => []) : [];
+      const audioSignature = hasAudio
+        ? await withTimeout(
+            computeAudioSignature(file),
+            EDITOR_POSTPROCESS_TIMEOUT_MS,
+            'No se pudo analizar el audio generado a tiempo.',
+          ).catch(() => [])
+        : [];
       const signature = { hash, audioSignature };
 
       if (!estimateSimilarity(signature, previousAccepted)) {
