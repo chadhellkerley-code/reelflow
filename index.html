@@ -363,76 +363,29 @@
           <div class="page-header">
             <div>
               <h1 class="page-title">Editor de Variantes</h1>
-              <p class="page-subtitle">Subí uno o varios videos, configurá copias por lote y generá variantes con historial y ZIP por video.</p>
+              <p class="page-subtitle">Subí un video base y generá variantes únicas con transformaciones mínimas, validación de hash y ZIP automático.</p>
             </div>
           </div>
 
           <div class="editor-shell">
-            <div class="editor-toolbar">
-              <div class="editor-toolbar-copy">Videos cargados y configuración por lote</div>
-              <div class="editor-toolbar-actions">
-                <button class="btn btn-primary btn-sm" id="editor-generate-all-btn" onclick="generateAllEditorVideos()">Generar todo</button>
-                <button class="btn btn-outline btn-sm" onclick="clearEditorWorkspace()">Vaciar</button>
-              </div>
-              <div class="editor-scroll-note" id="editor-generate-status"></div>
-            </div>
-
-            <div class="editor-upload-panel">
+            <div class="card">
+              <div class="card-title">Video base</div>
+              <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.6;">
+                Cargá un solo video base. El generador va a crear todas las variantes únicas a partir de este archivo.
+              </p>
               <div class="upload-zone upload-zone-editor" id="editor-upload-zone" onclick="document.getElementById('editor-video-input').click()">
                 <div class="upload-icon">▣</div>
                 <div class="upload-text">
-                  <strong>Arrastrá uno o más videos aquí</strong>
-                  <span>o hacé clic para seleccionar varios archivos</span>
+                  <strong>Arrastrá un video aquí</strong>
+                  <span>o hacé clic para seleccionar el archivo base</span>
                   <span class="upload-hint">MP4, MOV, M4V o WEBM</span>
                 </div>
-                <input type="file" id="editor-video-input" accept="video/*" multiple hidden onchange="handleEditorUpload(event)" />
+                <input type="file" id="editor-video-input" accept="video/*" hidden onchange="handleEditorUpload(event)" />
               </div>
 
               <div class="editor-video-list" id="editor-video-list"></div>
             </div>
 
-            <div class="editor-history-panel">
-              <div class="editor-history-header">
-                <div>
-                  <h3>Historial</h3>
-                  <p>Cola, procesados, listos y fallidos por video.</p>
-                </div>
-                <div class="editor-history-stats" id="editor-history-stats"></div>
-              </div>
-
-              <div class="editor-history-summary" id="editor-history-summary"></div>
-
-              <div class="editor-history-table-wrapper">
-                <table class="editor-history-table">
-                  <thead>
-                    <tr>
-                      <th>Nombre del video</th>
-                      <th>Copias</th>
-                      <th>Estados</th>
-                      <th>Progreso</th>
-                      <th>Fecha con hora</th>
-                      <th>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody id="editor-history-tbody">
-                    <tr class="empty-row">
-                      <td colspan="6">
-                        <div class="empty-state-small">
-                          <p>No hay videos cargados todavía.</p>
-                          <button class="btn btn-outline btn-sm" onclick="document.getElementById('editor-video-input').click()">Subir videos</button>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <!-- ═══════════════════════════════════════════════════════════ -->
-          <!-- GENERADOR DE VARIANTES ÚNICAS PARA INSTAGRAM                -->
-          <!-- ═══════════════════════════════════════════════════════════ -->
-          <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border);">
             <div class="card">
               <div class="card-title">🔄 Variantes Únicas para Instagram</div>
 
@@ -480,14 +433,19 @@
                 ✓ <strong>Variantes generadas exitosamente.</strong> Descargando archivo ZIP con todos los videos...
               </div>
 
-              <button
-                class="btn btn-primary"
-                id="variant-unique-btn"
-                onclick="startVariantUniqueGeneration()"
-                style="width: 100%;"
-              >
-                ⚡ Generar Variantes Únicas
-              </button>
+              <div style="display: flex; gap: 12px;">
+                <button class="btn btn-outline" onclick="clearEditorWorkspace()" style="flex: 1;">
+                  Vaciar video
+                </button>
+                <button
+                  class="btn btn-primary"
+                  id="variant-unique-btn"
+                  onclick="startVariantUniqueGeneration()"
+                  style="flex: 2;"
+                >
+                  ⚡ Generar Variantes Únicas
+                </button>
+              </div>
             </div>
           </div>
         </section>

@@ -532,7 +532,6 @@ function navigateTo(page) {
   if (page === 'publisher') renderPublisherAccounts();
   if (page === 'editor') {
     renderEditorVideos();
-    renderEditorHistory();
   }
   if (page === 'history')   renderHistory();
   if (page === 'settings')  renderSettings();
@@ -3228,59 +3227,28 @@ function renderEditorVideos() {
   const list = document.getElementById('editor-video-list');
   if (!list) return;
 
-  if (!state.editorProjects.length) {
+  if (!state.editorVideos.length) {
     list.innerHTML = `
       <div class="empty-state-small" style="grid-column:1/-1">
-        <p>No hay videos cargados todavía.</p>
-        <button class="btn btn-outline btn-sm" onclick="document.getElementById('editor-video-input').click()">Subir videos</button>
+        <p>No hay video base cargado todavía.</p>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('editor-video-input').click()">Subir video</button>
       </div>
     `;
     return;
   }
 
-  list.innerHTML = state.editorProjects.map(project => {
-    const processingCopy = project.copies.find(copy => copy.status === 'processing') || null;
-    const activeCopy = processingCopy || getEditorActiveCopy(project);
-    const readyCount = project.copies.filter(copy => copy.status === 'ready').length;
-    const failedCount = project.copies.filter(copy => copy.status === 'failed').length;
-    const completedCount = project.copies.filter(copy => copy.status === 'ready' || copy.status === 'failed').length;
-    const activeProgress = processingCopy ? clampEditorProgress(processingCopy.progress) / 100 : 0;
-    const progress = project.copies.length
-      ? Math.round(((completedCount + activeProgress) / project.copies.length) * 100)
-      : 0;
-    const activeProgressLabel = processingCopy
-      ? `${Math.round(clampEditorProgress(processingCopy.progress))}%`
-      : `${progress}%`;
-    return `
-      <article class="editor-project-card ${state.editorModalProjectId === project.id ? 'selected' : ''}">
-        <div class="editor-project-top">
-          <div class="editor-project-thumb">
-            <video src="${project.previewUrl}" muted playsinline preload="metadata"></video>
-          </div>
-          <div class="editor-project-info">
-            <div class="editor-project-name">${escapeHtml(project.name)}</div>
-            <div class="editor-project-meta">${formatBytes(project.size)} · ${project.copies.length} copia(s)</div>
-            <div class="editor-project-meta">${readyCount} listas · ${failedCount} fallidas · ${progress}% procesado</div>
-          </div>
-        </div>
-        <div class="editor-project-actions">
-          <button class="btn btn-ghost btn-sm" onclick="removeEditorProject('${project.id}')">🗑</button>
-          <button class="btn btn-primary btn-sm" onclick="openEditorProjectConfig('${project.id}')">Configurar</button>
-        </div>
-        <div class="editor-job-status">
-          <strong>${escapeHtml(getEditorCopyLabel(activeCopy))}</strong>
-          <div>${escapeHtml(activeCopy?.status || 'queued')} · ${activeProgressLabel}</div>
-          ${activeCopy?.detail ? `<div class="editor-job-detail">${escapeHtml(activeCopy.detail)}</div>` : ''}
-          <div class="editor-job-progress">
-            <div class="progress-bar">
-              <div class="progress-fill" style="width:${Math.round(clampEditorProgress(activeCopy?.progress || 0))}%"></div>
-            </div>
-          </div>
-          ${activeCopy?.status === 'failed' && activeCopy.error ? `<div class="editor-job-error">${escapeHtml(activeCopy.error)}</div>` : ''}
-        </div>
-      </article>
-    `;
-  }).join('');
+  const file = state.editorVideos[0];
+  list.innerHTML = `
+    <div class="editor-video-item">
+      <div class="editor-video-thumb">▶</div>
+      <div class="editor-video-info">
+        <div class="editor-video-name">${escapeHtml(file.name)}</div>
+        <div class="editor-video-size">${formatBytes(file.size)}</div>
+        <div class="editor-video-size">Video base listo para generar variantes únicas</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="removeEditorVideo(0)">✕</button>
+    </div>
+  `;
 }
 
 function renderEditorHistory() {
@@ -3383,32 +3351,18 @@ function updateEditorCounters() {
 }
 
 function handleEditorUpload(event) {
-  const files = Array.from(event.target.files || []).filter(file => file.type.startsWith('video/'));
-  if (!files.length) return;
+  const file = Array.from(event.target.files || []).find(item => item.type.startsWith('video/'));
+  if (!file) return;
 
-  files.forEach(file => {
-    const project = createEditorProject(file);
-    state.editorProjects.push(project);
-    void getBrowserVideoMetadata(file).then(meta => {
-      const current = getEditorProject(project.id);
-      if (!current) return;
-      current.duration = meta.duration || current.duration || 0;
-      current.width = meta.width || current.width || 0;
-      current.height = meta.height || current.height || 0;
-      current.copies.forEach(copy => {
-        if (!copy.rangeEnd || copy.rangeEnd === 10) {
-          copy.rangeEnd = Math.max(1, Math.round(current.duration || 10));
-        }
-      });
-      syncEditorProjectMetadata(current);
-      updateEditorCounters();
-      if (state.editorModalProjectId === current.id) {
-        renderEditorProjectModal(current.id);
-      }
-    }).catch(() => {});
-  });
-
+  state.editorVideos = [file];
   event.target.value = '';
+  updateEditorCounters();
+  toast('Video base cargado', 'success');
+}
+
+function removeEditorVideo(index) {
+  if (index < 0 || index >= state.editorVideos.length) return;
+  state.editorVideos.splice(index, 1);
   updateEditorCounters();
 }
 
@@ -3433,13 +3387,14 @@ function removeEditorProject(projectId) {
 }
 
 function clearEditorWorkspace() {
-  if (!state.editorProjects.length) {
+  if (!state.editorVideos.length && !state.editorProjects.length) {
     toast('No hay videos para vaciar', 'info');
     return;
   }
 
-  if (!confirm('Esto vaciará todos los videos cargados. ¿Continuar?')) return;
+  if (!confirm('Esto vaciará el video base cargado. ¿Continuar?')) return;
 
+  state.editorVideos = [];
   state.editorProjects.forEach(project => {
     if (project.previewUrl) URL.revokeObjectURL(project.previewUrl);
     if (project.zip?.url) URL.revokeObjectURL(project.zip.url);
@@ -3455,7 +3410,7 @@ function clearEditorWorkspace() {
   state.editorPreviewMode = 'original';
   closeModal();
   updateEditorCounters();
-  toast('Editor vaciado', 'success');
+  toast('Video base vaciado', 'success');
 }
 
 function openEditorProjectConfig(projectId) {
@@ -5173,7 +5128,6 @@ function init() {
   // Restore accounts
   renderIGAccounts();
   renderEditorVideos();
-  renderEditorHistory();
 
   // Initial page
   navigateTo('dashboard');
