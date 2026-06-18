@@ -3002,6 +3002,7 @@ function cloneEditorCopyConfig(copy, index = copy?.index || 1) {
     titleDraft: copy?.titleDraft ?? null,
     status: copy?.status || 'queued',
     progress: Number(copy?.progress || 0),
+    detail: copy?.detail || '',
     output: copy?.output || null,
     hash: copy?.hash || null,
     audioSignature: copy?.audioSignature || null,
@@ -3030,6 +3031,7 @@ function createEditorCopy(project, index, sourceCopy = null) {
     rangeEnd: Number(config.rangeEnd || 10),
     status: 'queued',
     progress: 0,
+    detail: '',
     output: null,
     hash: null,
     audioSignature: null,
@@ -3109,7 +3111,14 @@ function renderEditorVideos() {
     const activeCopy = getEditorActiveCopy(project);
     const readyCount = project.copies.filter(copy => copy.status === 'ready').length;
     const failedCount = project.copies.filter(copy => copy.status === 'failed').length;
-    const progress = project.copies.length ? Math.round((project.copies.filter(copy => copy.status === 'ready' || copy.status === 'failed').length / project.copies.length) * 100) : 0;
+    const completedCount = project.copies.filter(copy => copy.status === 'ready' || copy.status === 'failed').length;
+    const activeProgress = activeCopy?.status === 'processing' ? clampEditorProgress(activeCopy.progress) / 100 : 0;
+    const progress = project.copies.length
+      ? Math.round(((completedCount + activeProgress) / project.copies.length) * 100)
+      : 0;
+    const activeProgressLabel = activeCopy?.status === 'processing'
+      ? `${Math.round(clampEditorProgress(activeCopy.progress))}%`
+      : `${progress}%`;
     return `
       <article class="editor-project-card ${state.editorModalProjectId === project.id ? 'selected' : ''}">
         <div class="editor-project-top">
@@ -3128,7 +3137,13 @@ function renderEditorVideos() {
         </div>
         <div class="editor-job-status">
           <strong>${escapeHtml(getEditorCopyLabel(activeCopy))}</strong>
-          <div>${escapeHtml(activeCopy?.status || 'queued')} · ${activeCopy?.progress ? `${Math.round(activeCopy.progress)}%` : '0%'}</div>
+          <div>${escapeHtml(activeCopy?.status || 'queued')} · ${activeProgressLabel}</div>
+          ${activeCopy?.detail ? `<div class="editor-job-detail">${escapeHtml(activeCopy.detail)}</div>` : ''}
+          <div class="editor-job-progress">
+            <div class="progress-bar">
+              <div class="progress-fill" style="width:${Math.round(clampEditorProgress(activeCopy?.progress || 0))}%"></div>
+            </div>
+          </div>
           ${activeCopy?.status === 'failed' && activeCopy.error ? `<div class="editor-job-error">${escapeHtml(activeCopy.error)}</div>` : ''}
         </div>
       </article>
@@ -3857,8 +3872,42 @@ function clearEditorQueueState(project) {
     copy.audioSignature = null;
     copy.status = 'queued';
     copy.progress = 0;
+    copy.detail = '';
     copy.attempts = 0;
   });
+}
+
+function clampEditorProgress(value) {
+  return Math.max(0, Math.min(100, Number(value) || 0));
+}
+
+function createEditorCopyProgressReporter(copy) {
+  let lastRefreshAt = 0;
+  let lastProgressBucket = -1;
+  let lastDetail = '';
+
+  return (progress, detail = '') => {
+    const nextProgress = clampEditorProgress(progress);
+    const nextDetail = String(detail || '');
+    const bucket = Math.floor(nextProgress);
+    const now = Date.now();
+    const shouldRefresh =
+      bucket !== lastProgressBucket ||
+      nextDetail !== lastDetail ||
+      now - lastRefreshAt >= 350 ||
+      nextProgress === 0 ||
+      nextProgress === 100;
+
+    copy.progress = nextProgress;
+    copy.detail = nextDetail;
+
+    if (shouldRefresh) {
+      lastRefreshAt = now;
+      lastProgressBucket = bucket;
+      lastDetail = nextDetail;
+      refreshEditorUi();
+    }
+  };
 }
 
 function getEditorHistoryTotals() {
@@ -4101,7 +4150,7 @@ function getEditorCanvasOverlayPosition(copy, overlayWidth, overlayHeight, width
   };
 }
 
-async function composeEditorVariantVideo(project, copy, width, height, plan, hasAudio) {
+async function composeEditorVariantVideo(project, copy, width, height, plan, hasAudio, onProgress) {
   const overlay = await buildEditorTitleOverlay(project, copy, width, height);
   const overlayDrawable = await loadCanvasDrawable(overlay.blob);
   const video = document.createElement('video');
@@ -4178,9 +4227,19 @@ async function composeEditorVariantVideo(project, copy, width, height, plan, has
     recorder.start();
     const startTime = performance.now();
     const frameDelay = 1000 / frameRate;
+    let lastProgressBucket = -1;
 
     while ((performance.now() - startTime) / 1000 < recordSeconds) {
       const elapsedSeconds = (performance.now() - startTime) / 1000;
+      if (onProgress) {
+        const phaseProgress = recordSeconds > 0 ? Math.min(1, elapsedSeconds / recordSeconds) : 1;
+        const progress = 15 + (phaseProgress * 70);
+        const bucket = Math.floor(progress);
+        if (bucket !== lastProgressBucket) {
+          lastProgressBucket = bucket;
+          onProgress(progress, playbackStarted ? 'Grabando el video...' : 'Preparando el video...');
+        }
+      }
       if (!playbackStarted && elapsedSeconds >= delaySeconds) {
         playbackStarted = true;
         audioContext?.resume?.().catch(() => {});
@@ -4222,6 +4281,7 @@ async function composeEditorVariantVideo(project, copy, width, height, plan, has
     await recorderStopped;
 
     const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+    onProgress?.(86, 'Terminando la grabación...');
     return {
       blob,
       mimeType: recorder.mimeType || 'video/webm',
@@ -4240,8 +4300,9 @@ async function composeEditorVariantVideo(project, copy, width, height, plan, has
   }
 }
 
-async function transcodeEditorRecording(runtime, recording, outputName, hasAudio) {
+async function transcodeEditorRecording(runtime, recording, outputName, hasAudio, onProgress) {
   const inputName = `recording-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webm`;
+  onProgress?.(88, 'Preparando la transcodificación...');
   await runtime.instance.writeFile(inputName, await runtime.fetchFile(recording.blob));
 
   try {
@@ -4267,7 +4328,9 @@ async function transcodeEditorRecording(runtime, recording, outputName, hasAudio
       outputName,
     );
 
+    onProgress?.(92, 'Transcodificando con FFmpeg...');
     await execFFmpegChecked(runtime.instance, args);
+    onProgress?.(98, 'Verificando el archivo generado...');
     const data = await runtime.instance.readFile(outputName);
     const blob = new Blob([data], { type: 'video/mp4' });
     return {
@@ -4530,18 +4593,21 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
   const maxAttempts = 4;
   let lastError = null;
   const outputName = `variant_${String(copy.index).padStart(3, '0')}.mp4`;
+  const reportProgress = createEditorCopyProgressReporter(copy);
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const plan = createVariantPlan(project, copy, attempt);
 
     try {
       copy.status = 'processing';
-      copy.progress = 15;
+      copy.detail = 'Preparando la copia...';
+      reportProgress(15, 'Preparando la copia...');
       syncEditorProjectMetadata(project);
       refreshEditorUi();
 
-      const recording = await composeEditorVariantVideo(project, copy, width, height, plan, hasAudio);
-      const output = await transcodeEditorRecording(ffmpegRuntime, recording, outputName, hasAudio);
+      const recording = await composeEditorVariantVideo(project, copy, width, height, plan, hasAudio, reportProgress);
+      reportProgress(87, 'Transcodificando el resultado...');
+      const output = await transcodeEditorRecording(ffmpegRuntime, recording, outputName, hasAudio, reportProgress);
       const { blob, file, url } = output;
       const frame = await loadVideoFrame(file, 0.45).catch(() => null);
       const hash = frame ? computePhashFromImageData(frame) : [];
@@ -4556,7 +4622,7 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
       }
 
       copy.status = 'ready';
-      copy.progress = 100;
+      reportProgress(100, 'Listo');
       copy.attempts = attempt + 1;
       copy.output = {
         blob,
@@ -4570,12 +4636,13 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
     } catch (error) {
       lastError = error;
       copy.status = 'processing';
-      copy.progress = Math.max(copy.progress, 25);
+      reportProgress(Math.max(copy.progress, 25), 'Reintentando la copia...');
       await ffmpegRuntime.instance.deleteFile(outputName).catch(() => {});
     }
   }
 
   copy.status = 'failed';
+  copy.detail = '';
   copy.progress = 0;
   copy.attempts = maxAttempts;
   syncEditorProjectMetadata(project);
