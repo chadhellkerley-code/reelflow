@@ -56,7 +56,8 @@ const GEMINI_INLINE_VIDEO_MAX_BYTES = 18 * 1024 * 1024;
 const FFMPEG_CORE_VERSION = '0.12.10';
 const FFMPEG_FONT_URL = 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bopsz,wght%5D.ttf';
 const FFMPEG_FONT_FILE = 'Inter.ttf';
-const EDITOR_FFMPEG_EXEC_TIMEOUT_MS = 15 * 60 * 1000;
+const EDITOR_FFMPEG_EXEC_TIMEOUT_MS = 25 * 60 * 1000;
+const EDITOR_FFMPEG_STALL_TIMEOUT_MS = 90 * 1000;
 const EDITOR_POSTPROCESS_TIMEOUT_MS = 15 * 1000;
 
 const EDITOR_FONT_OPTIONS = [
@@ -2436,6 +2437,82 @@ async function loadFFmpeg(statusEl) {
   }
 }
 
+function resetEditorFFmpegRuntime() {
+  if (state.ffmpeg.instance) {
+    try {
+      state.ffmpeg.instance.terminate();
+    } catch {
+      // Ignore teardown errors from a worker that is already gone.
+    }
+  }
+
+  state.ffmpeg.instance = null;
+  state.ffmpeg.fetchFile = null;
+  state.ffmpeg.loaded = false;
+  state.ffmpeg.loading = false;
+  state.ffmpeg.fontLoaded = false;
+}
+
+async function execEditorFFmpegChecked(runtime, args, errorMessage = 'FFmpeg no pudo completar la edición.') {
+  const ffmpeg = runtime?.instance;
+  if (!ffmpeg) throw new Error('FFmpeg no esta disponible.');
+
+  let lastProgressAt = Date.now();
+  let watchdogError = null;
+  let finished = false;
+  const onProgress = () => {
+    lastProgressAt = Date.now();
+  };
+
+  const abortRuntime = reason => {
+    if (watchdogError) return;
+    watchdogError = new Error(reason);
+    watchdogError.code = 'editor_ffmpeg_watchdog';
+    try {
+      ffmpeg.terminate();
+    } catch {
+      // Ignore errors while aborting a stalled worker.
+    }
+    resetEditorFFmpegRuntime();
+  };
+
+  const progressCheckInterval = Math.max(5000, Math.floor(EDITOR_FFMPEG_STALL_TIMEOUT_MS / 3));
+  const stallTimer = setInterval(() => {
+    if (finished || watchdogError) return;
+    if (Date.now() - lastProgressAt >= EDITOR_FFMPEG_STALL_TIMEOUT_MS) {
+      abortRuntime('FFmpeg se quedo sin avances y fue reiniciado.');
+    }
+  }, progressCheckInterval);
+
+  const hardTimeout = setTimeout(() => {
+    if (!finished && !watchdogError) {
+      abortRuntime('FFmpeg tardo demasiado y fue reiniciado.');
+    }
+  }, EDITOR_FFMPEG_EXEC_TIMEOUT_MS);
+
+  const cleanup = () => {
+    if (finished) return;
+    finished = true;
+    clearInterval(stallTimer);
+    clearTimeout(hardTimeout);
+    ffmpeg.off?.('progress', onProgress);
+  };
+
+  ffmpeg.on?.('progress', onProgress);
+
+  try {
+    const result = await ffmpeg.exec(args);
+    if (watchdogError) throw watchdogError;
+    if (result !== 0) throw new Error(errorMessage);
+    return result;
+  } catch (error) {
+    if (watchdogError) throw watchdogError;
+    throw error;
+  } finally {
+    cleanup();
+  }
+}
+
 async function ensureFFmpegFont(runtime) {
   if (state.ffmpeg.fontLoaded) return;
 
@@ -4344,7 +4421,7 @@ async function transcodeEditorRecording(runtime, recording, outputName, hasAudio
     );
 
     onProgress?.(92, 'Transcodificando con FFmpeg...');
-    await execFFmpegChecked(runtime.instance, args);
+    await execEditorFFmpegChecked(runtime, args);
     onProgress?.(98, 'Verificando el archivo generado...');
     const data = await runtime.instance.readFile(outputName);
     const blob = new Blob([data], { type: 'video/mp4' });
@@ -4612,6 +4689,8 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const plan = createVariantPlan(project, copy, attempt);
+    const editorStatusEl = document.getElementById('editor-generate-status') || document.body;
+    let output = null;
 
     try {
       copy.status = 'processing';
@@ -4622,7 +4701,7 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
 
       const recording = await composeEditorVariantVideo(project, copy, width, height, plan, hasAudio, reportProgress);
       reportProgress(87, 'Transcodificando el resultado...');
-      const output = await transcodeEditorRecording(ffmpegRuntime, recording, outputName, hasAudio, reportProgress);
+      output = await transcodeEditorRecording(ffmpegRuntime, recording, outputName, hasAudio, reportProgress);
       const { blob, file, url } = output;
       const frame = await withTimeout(
         loadVideoFrame(file, 0.45),
@@ -4660,6 +4739,9 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
       return copy.output;
     } catch (error) {
       lastError = error;
+      if (output?.url) URL.revokeObjectURL(output.url);
+      resetEditorFFmpegRuntime();
+      ffmpegRuntime = await loadFFmpeg(editorStatusEl);
       copy.status = 'processing';
       reportProgress(Math.max(copy.progress, 25), 'Reintentando la copia...');
       await ffmpegRuntime.instance.deleteFile(outputName).catch(() => {});
