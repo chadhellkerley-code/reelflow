@@ -4718,6 +4718,12 @@ async function buildEditorTitleOverlay(project, copy, width, height) {
   return overlay;
 }
 
+// Rehydrate the source video after a runtime reset; the old in-memory FS is gone.
+async function restoreEditorInputFile(ffmpegRuntime, inputName, sourceFile) {
+  if (!ffmpegRuntime?.instance || !ffmpegRuntime.fetchFile || !sourceFile) return;
+  await ffmpegRuntime.instance.writeFile(inputName, await ffmpegRuntime.fetchFile(sourceFile));
+}
+
 function estimateSimilarity(signature, previousCopies) {
   for (const previous of previousCopies) {
     if (!previous?.hash || !previous?.audioSignature) continue;
@@ -4730,7 +4736,7 @@ function estimateSimilarity(signature, previousCopies) {
   return true;
 }
 
-async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, width, height, hasAudio, previousAccepted) {
+async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, sourceFile, width, height, hasAudio, previousAccepted) {
   const maxAttempts = 8;
   let lastError = null;
   const outputName = `variant_${String(copy.index).padStart(3, '0')}.mp4`;
@@ -4805,6 +4811,7 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
       if (error?.code === 'editor_ffmpeg_watchdog' || !ffmpegRuntime?.instance) {
         resetEditorFFmpegRuntime();
         ffmpegRuntime = await loadFFmpeg(editorStatusEl);
+        await restoreEditorInputFile(ffmpegRuntime, inputName, sourceFile);
       }
       copy.status = 'processing';
       reportProgress(Math.max(copy.progress, 25), 'Reintentando la copia...');
@@ -4866,7 +4873,7 @@ async function generateAllEditorVideos() {
             refreshEditorUi();
             const statusNote = document.getElementById('editor-generate-status');
             if (statusNote) statusNote.textContent = `Procesando ${project.name} · copia ${copy.index} de ${project.copies.length}...`;
-            const output = await renderEditorProjectCopy(project, copy, runtime, inputName, project.width, project.height, hasAudio, previousAccepted);
+            const output = await renderEditorProjectCopy(project, copy, runtime, inputName, project.file, project.width, project.height, hasAudio, previousAccepted);
             previousAccepted.push({
               hash: copy.hash,
               audioSignature: copy.audioSignature,
