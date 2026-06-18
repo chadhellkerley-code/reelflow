@@ -2453,15 +2453,21 @@ function resetEditorFFmpegRuntime() {
   state.ffmpeg.fontLoaded = false;
 }
 
-async function execEditorFFmpegChecked(runtime, args, errorMessage = 'FFmpeg no pudo completar la edición.') {
+async function execEditorFFmpegChecked(runtime, args, onProgress, errorMessage = 'FFmpeg no pudo completar la edición.') {
   const ffmpeg = runtime?.instance;
   if (!ffmpeg) throw new Error('FFmpeg no esta disponible.');
 
   let lastProgressAt = Date.now();
   let watchdogError = null;
   let finished = false;
-  const onProgress = () => {
+  const onHeartbeat = () => {
     lastProgressAt = Date.now();
+  };
+  const onFfmpegProgress = ({ progress }) => {
+    lastProgressAt = Date.now();
+    if (!onProgress) return;
+    const pct = 92 + (Math.max(0, Math.min(1, Number(progress) || 0)) * 6);
+    onProgress(pct, 'Transcodificando con FFmpeg...');
   };
 
   const abortRuntime = reason => {
@@ -2495,10 +2501,12 @@ async function execEditorFFmpegChecked(runtime, args, errorMessage = 'FFmpeg no 
     finished = true;
     clearInterval(stallTimer);
     clearTimeout(hardTimeout);
-    ffmpeg.off?.('progress', onProgress);
+    ffmpeg.off?.('progress', onHeartbeat);
+    ffmpeg.off?.('progress', onFfmpegProgress);
   };
 
-  ffmpeg.on?.('progress', onProgress);
+  ffmpeg.on?.('progress', onHeartbeat);
+  ffmpeg.on?.('progress', onFfmpegProgress);
 
   try {
     const result = await ffmpeg.exec(args);
@@ -4421,7 +4429,7 @@ async function transcodeEditorRecording(runtime, recording, outputName, hasAudio
     );
 
     onProgress?.(92, 'Transcodificando con FFmpeg...');
-    await execEditorFFmpegChecked(runtime, args);
+    await execEditorFFmpegChecked(runtime, args, onProgress);
     onProgress?.(98, 'Verificando el archivo generado...');
     const data = await runtime.instance.readFile(outputName);
     const blob = new Blob([data], { type: 'video/mp4' });
@@ -4740,11 +4748,13 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
     } catch (error) {
       lastError = error;
       if (output?.url) URL.revokeObjectURL(output.url);
-      resetEditorFFmpegRuntime();
-      ffmpegRuntime = await loadFFmpeg(editorStatusEl);
+      if (error?.code === 'editor_ffmpeg_watchdog' || !ffmpegRuntime?.instance) {
+        resetEditorFFmpegRuntime();
+        ffmpegRuntime = await loadFFmpeg(editorStatusEl);
+      }
       copy.status = 'processing';
       reportProgress(Math.max(copy.progress, 25), 'Reintentando la copia...');
-      await ffmpegRuntime.instance.deleteFile(outputName).catch(() => {});
+      await ffmpegRuntime.instance?.deleteFile(outputName).catch(() => {});
     }
   }
 
