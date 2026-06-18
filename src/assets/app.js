@@ -532,6 +532,8 @@ function navigateTo(page) {
   if (page === 'publisher') renderPublisherAccounts();
   if (page === 'editor') {
     renderEditorVideos();
+    updateVariantUniqueControls();
+    if (state.editorVideos.length) void ensureVariantUniqueRuntime();
   }
   if (page === 'history')   renderHistory();
   if (page === 'settings')  renderSettings();
@@ -2431,7 +2433,7 @@ async function loadFFmpeg(statusEl) {
   }
 
   state.ffmpeg.loading = true;
-  statusEl.textContent = 'Cargando FFmpeg.wasm por primera vez...';
+  if (statusEl) statusEl.textContent = 'Cargando FFmpeg.wasm por primera vez...';
 
   try {
     const [{ FFmpeg }, { fetchFile, toBlobURL }] = await Promise.all([
@@ -2461,6 +2463,59 @@ async function loadFFmpeg(statusEl) {
   } finally {
     state.ffmpeg.loading = false;
   }
+}
+
+function getVariantUniqueRuntimeStatusEl() {
+  return document.getElementById('variant-unique-runtime-status');
+}
+
+function updateVariantUniqueControls() {
+  const button = document.getElementById('variant-unique-btn');
+  const statusEl = getVariantUniqueRuntimeStatusEl();
+  const hasVideo = Boolean(state.editorVideos?.length);
+  const runtimeReady = Boolean(state.ffmpeg.loaded && state.ffmpeg.instance);
+  const runtimeLoading = Boolean(state.ffmpeg.loading);
+
+  if (button) {
+    button.disabled = !hasVideo || runtimeLoading || !runtimeReady;
+    button.textContent = runtimeLoading
+      ? 'Preparando motor local...'
+      : '⚡ Generar Variantes Únicas';
+  }
+
+  if (!statusEl) return;
+  if (!hasVideo) {
+    statusEl.textContent = 'Cargá un video base para preparar el motor local.';
+    return;
+  }
+  if (runtimeLoading) {
+    statusEl.textContent = 'Preparando motor local...';
+    return;
+  }
+  if (runtimeReady) {
+    statusEl.textContent = 'Motor local listo. Ya podés generar variantes.';
+    return;
+  }
+  statusEl.textContent = 'Preparando motor local cuando cargues el video.';
+}
+
+async function ensureVariantUniqueRuntime(statusEl = getVariantUniqueRuntimeStatusEl()) {
+  if (state.ffmpeg.loaded && state.ffmpeg.instance) {
+    updateVariantUniqueControls();
+    return state.ffmpeg;
+  }
+
+  if (state.ffmpeg.loading) {
+    if (statusEl) statusEl.textContent = 'Preparando motor local...';
+    while (state.ffmpeg.loading) await sleep(250);
+    updateVariantUniqueControls();
+    return state.ffmpeg;
+  }
+
+  if (statusEl) statusEl.textContent = 'Preparando motor local...';
+  const runtime = await loadFFmpeg(statusEl);
+  updateVariantUniqueControls();
+  return runtime;
 }
 
 function resetEditorFFmpegRuntime() {
@@ -3249,6 +3304,8 @@ function renderEditorVideos() {
       <button class="btn btn-ghost btn-sm" onclick="removeEditorVideo(0)">✕</button>
     </div>
   `;
+
+  updateVariantUniqueControls();
 }
 
 function renderEditorHistory() {
@@ -3357,6 +3414,7 @@ function handleEditorUpload(event) {
   state.editorVideos = [file];
   event.target.value = '';
   updateEditorCounters();
+  void ensureVariantUniqueRuntime();
   toast('Video base cargado', 'success');
 }
 
@@ -3364,6 +3422,7 @@ function removeEditorVideo(index) {
   if (index < 0 || index >= state.editorVideos.length) return;
   state.editorVideos.splice(index, 1);
   updateEditorCounters();
+  updateVariantUniqueControls();
 }
 
 function removeEditorProject(projectId) {
@@ -3410,6 +3469,7 @@ function clearEditorWorkspace() {
   state.editorPreviewMode = 'original';
   closeModal();
   updateEditorCounters();
+  updateVariantUniqueControls();
   toast('Video base vaciado', 'success');
 }
 
@@ -5140,18 +5200,13 @@ async function startVariantUniqueGeneration() {
     return;
   }
 
-  const ffmpegRuntime = state.ffmpeg;
-  if (!ffmpegRuntime?.instance) {
-    toast('FFmpeg no está disponible. Recargá la página.', 'error');
-    return;
-  }
-
   const variantCount = parseInt(document.getElementById('variant-unique-count')?.value || '10', 10);
   if (!Number.isFinite(variantCount) || variantCount < 1 || variantCount > 100) {
     toast('Las variantes deben ser entre 1 y 100', 'error');
     return;
   }
 
+  const runtimeStatus = getVariantUniqueRuntimeStatusEl();
   const btnGenerate = document.getElementById('variant-unique-btn');
   const progressContainer = document.getElementById('variant-unique-progress');
   const progressBar = document.getElementById('variant-unique-progress-bar');
@@ -5164,8 +5219,10 @@ async function startVariantUniqueGeneration() {
   if (progressBar) progressBar.style.width = '0%';
   if (progressText) progressText.textContent = 'Preparando...';
 
-  const ffmpeg = ffmpegRuntime.instance || ffmpegRuntime;
+  if (runtimeStatus) runtimeStatus.textContent = 'Preparando motor local...';
+
   const inputFileName = 'variant-input.mp4';
+  let ffmpeg = null;
   const variants = [];
   const manifestEntries = [];
   const previousAccepted = [];
@@ -5173,6 +5230,8 @@ async function startVariantUniqueGeneration() {
   let hasAudio = false;
 
   try {
+    const ffmpegRuntime = await ensureVariantUniqueRuntime(runtimeStatus);
+    ffmpeg = ffmpegRuntime.instance || ffmpegRuntime;
     const { VariantTransformer } = await import('/src/engine/variantTransformer.js');
     const metadata = await getBrowserVideoMetadata(videoFile);
     const targetFrame = metadata.width && metadata.height
@@ -5276,9 +5335,12 @@ async function startVariantUniqueGeneration() {
     const errorMsg = error?.message || 'Error desconocido';
     toast(`Error: ${errorMsg}`, 'error');
   } finally {
-    await ffmpeg.deleteFile(inputFileName).catch(() => {});
+    if (ffmpeg) {
+      await ffmpeg.deleteFile(inputFileName).catch(() => {});
+    }
     if (btnGenerate) btnGenerate.disabled = false;
     state.ffmpeg.activeStatusId = null;
+    updateVariantUniqueControls();
   }
 }
 
