@@ -361,17 +361,11 @@ function getInstagramCallbackUrl() {
   return `${getPublicOrigin()}/auth/instagram/callback`;
 }
 
-function getTikTokCallbackUrl() {
-  return `${getPublicOrigin()}/auth/tiktok/callback`;
-}
-
 // ── Navigation ─────────────────────────────────────────────
 const pages = {
   dashboard: 'Dashboard',
   accounts:  'Cuentas',
   publisher: 'Publicar',
-  editor:    'Editor de Videos',
-  'ai-video': 'Crear video IA',
   history:   'Historial',
   settings:  'Configuración',
 };
@@ -397,8 +391,6 @@ function navigateTo(page) {
   // Page-specific init
   if (page === 'dashboard') renderDashboard();
   if (page === 'publisher') renderPublisherAccounts();
-  if (page === 'editor')    initEditor();
-  if (page === 'ai-video')  renderAiVideoStatus();
   if (page === 'history')   renderHistory();
   if (page === 'settings')  renderSettings();
 }
@@ -455,21 +447,7 @@ function saveHistory() {
 }
 function saveSettings() {
   state.settings.backendUrl = document.getElementById('backend-url')?.value?.trim() || 'http://localhost:4000';
-  state.settings.geminiApiKey = document.getElementById('gemini-api-key')?.value?.trim() || '';
-  state.settings.geminiModel = document.getElementById('gemini-model')?.value?.trim() || 'gemini-1.5-pro';
-  state.settings.geminiImageModel = state.settings.geminiImageModel || 'gemini-2.0-flash-preview-image-generation';
-  state.settings.imageOverlayOpacity = Number(state.settings.imageOverlayOpacity || 0.55);
-  state.settings.openaiApiKey = document.getElementById('openai-api-key')?.value?.trim() || '';
-  state.settings.openaiVideoModel = document.getElementById('openai-video-model')?.value?.trim() || 'sora-2';
-  state.settings.openaiTtsModel = document.getElementById('openai-tts-model')?.value?.trim() || 'gpt-4o-mini-tts';
-  state.settings.openaiVoiceId = document.getElementById('openai-voice-id')?.value?.trim() || '';
-  state.settings.lipSyncProvider = document.getElementById('lipsync-provider')?.value || 'sync-labs';
-  state.settings.lipSyncApiKey = document.getElementById('lipsync-api-key')?.value?.trim() || '';
-  state.settings.lipSyncEndpoint = document.getElementById('lipsync-endpoint')?.value?.trim() || '';
   localStorage.setItem('rf_settings', JSON.stringify(state.settings));
-  syncGeminiGlobals();
-  updateEditorEngineStatus();
-  renderAiVideoStatus();
   toast('Configuración guardada', 'success');
 }
 
@@ -506,7 +484,7 @@ function renderDashboard() {
       <div class="account-preview-item">
         <div class="platform-dot ${acc.platform}"></div>
         <strong style="font-size:13px">${acc.username}</strong>
-        <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">${acc.platform === 'ig' ? 'Instagram' : 'TikTok'}</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">Instagram</span>
         <span class="badge badge-active" style="margin-left:8px">Activa</span>
       </div>
     `).join('');
@@ -519,8 +497,8 @@ function renderDashboard() {
   } else {
     activity.innerHTML = state.history.slice(-5).reverse().map(h => `
       <div class="activity-item">
-        <div class="activity-icon">${h.platform === 'ig' ? '▶' : h.platform === 'ai' ? '▣' : '◆'}</div>
-        <div class="activity-text">${h.type === 'format' ? 'Ediciones generadas' : h.type === 'ai-video' ? 'Borrador de video IA' : 'Reel publicado'} · ${h.account || h.filename || ''}</div>
+        <div class="activity-icon">${h.platform === 'ig' ? '▶' : '◆'}</div>
+        <div class="activity-text">${h.type === 'format' ? 'Ediciones generadas' : 'Reel publicado'} · ${h.account || h.filename || ''}</div>
         <div class="activity-time">${formatDate(h.date)}</div>
       </div>
     `).join('');
@@ -534,7 +512,7 @@ function renderConnectedBadges() {
   const container = document.getElementById('connected-badges');
   if (!container) return;
   container.innerHTML = state.accounts.map(acc => `
-    <span class="badge badge-active" style="font-size:10px">${acc.platform === 'ig' ? '📸' : '🎵'} ${acc.username}</span>
+    <span class="badge badge-active" style="font-size:10px">📸 ${acc.username}</span>
   `).join('');
 }
 
@@ -610,63 +588,10 @@ function saveInstagramAccount() {
   document.getElementById('platform-instagram').classList.add('connected');
 }
 
-function connectTikTok() {
-  const key = document.getElementById('tt-client-key').value.trim();
-
-  if (!key) { toast('Completá el TikTok Client Key', 'error'); return; }
-
-  const oauthState = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
-  const callbackUrl = getTikTokCallbackUrl();
-  const authUrl = new URL('https://www.tiktok.com/v2/auth/authorize/');
-
-  authUrl.searchParams.set('client_key', key);
-  authUrl.searchParams.set('scope', TIKTOK_SCOPES);
-  authUrl.searchParams.set('response_type', 'code');
-  authUrl.searchParams.set('redirect_uri', callbackUrl);
-  authUrl.searchParams.set('state', oauthState);
-  authUrl.searchParams.set('disable_auto_auth', '1');
-
-  localStorage.setItem('rf_tt_client_key', key);
-  localStorage.setItem('rf_tt_oauth_state', oauthState);
-  localStorage.setItem('rf_tt_callback_url', callbackUrl);
-
-  window.location.href = authUrl.toString();
-}
-
-function saveTikTokAccount() {
-  const username = document.getElementById('modal-tt-user').value.trim();
-  const token    = document.getElementById('modal-tt-token').value.trim();
-
-  if (!username || !token) { toast('Completá todos los campos', 'error'); return; }
-
-  const expiry = new Date();
-  expiry.setDate(expiry.getDate() + 1); // TikTok: 24h, con refresh
-
-  const account = {
-    id:       `tt_${Date.now()}`,
-    platform: 'tt',
-    username,
-    token,
-    expiresAt: expiry.toISOString(),
-    connectedAt: new Date().toISOString(),
-  };
-
-  state.accounts.push(account);
-  saveAccounts();
-  closeModal();
-  renderTTAccounts();
-  renderConnectedBadges();
-  toast(`Cuenta @${username} conectada`, 'success');
-
-  document.getElementById('tt-status').innerHTML = `<span class="badge badge-active">Conectado</span>`;
-  document.getElementById('platform-tiktok').classList.add('connected');
-}
-
 function removeAccount(id) {
   state.accounts = state.accounts.filter(a => a.id !== id);
   saveAccounts();
   renderIGAccounts();
-  renderTTAccounts();
   renderConnectedBadges();
   toast('Cuenta desconectada', 'success');
 }
@@ -690,27 +615,6 @@ function renderIGAccounts() {
 
   document.getElementById('ig-status').innerHTML = `<span class="badge badge-active">${igAccounts.length} cuenta(s)</span>`;
   document.getElementById('platform-instagram').classList.add('connected');
-}
-
-function renderTTAccounts() {
-  const list = document.getElementById('tt-accounts-list');
-  const ttAccounts = state.accounts.filter(a => a.platform === 'tt');
-  if (ttAccounts.length === 0) { list.innerHTML = ''; return; }
-
-  list.innerHTML = ttAccounts.map(acc => `
-    <div class="account-item">
-      <div class="account-avatar">${acc.username[0].toUpperCase()}</div>
-      <div class="account-item-info">
-        <div class="account-item-name">${acc.username}</div>
-        <div class="account-item-meta">Token expira: ${formatDate(acc.expiresAt)}</div>
-      </div>
-      <span class="badge badge-active">Activa</span>
-      <button class="account-item-remove" onclick="removeAccount('${acc.id}')">✕</button>
-    </div>
-  `).join('');
-
-  document.getElementById('tt-status').innerHTML = `<span class="badge badge-active">${ttAccounts.length} cuenta(s)</span>`;
-  document.getElementById('platform-tiktok').classList.add('connected');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -760,7 +664,7 @@ function renderPublisherAccounts() {
       <div class="account-avatar">${acc.username[0].toUpperCase()}</div>
       <div class="account-item-info">
         <div class="account-item-name">${acc.username}</div>
-        <div class="account-item-meta">${acc.platform === 'ig' ? 'Instagram' : 'TikTok'}</div>
+        <div class="account-item-meta">Instagram</div>
       </div>
       <div class="check">${state.selectedAccounts.has(acc.id) ? '✓' : ''}</div>
     </div>
@@ -810,11 +714,8 @@ async function publishReel() {
         videoUrl,
         caption,
         thumbOffset,
-        privacyLevel: document.getElementById('tiktok-privacy')?.value || 'SELF_ONLY',
       };
-      const data = acc.platform === 'tt'
-        ? await publishTikTokReel(acc, payload, status)
-        : await publishInstagramReel(acc, payload, status);
+      const data = await publishInstagramReel(acc, payload, status);
       results.push({ acc, data });
 
       state.history.push({
@@ -925,34 +826,6 @@ async function uploadVideoToStorage(file, statusEl) {
   if (!blob?.url) throw new Error('No se pudo obtener la URL pública del video.');
   statusEl.textContent = 'Video subido. Preparando publicación...';
   return blob.url;
-}
-
-async function publishTikTokReel(account, payload, statusEl) {
-  const grantedScopes = String(account.scope || '');
-  if (!grantedScopes.includes('video.publish')) {
-    throw new Error(`Reconectá ${account.username} con el permiso video.publish antes de publicar en TikTok.`);
-  }
-
-  statusEl.textContent = `Publicando automáticamente en ${account.username}...`;
-
-  const response = await fetch('/api/tiktok/publish', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      accessToken: account.token,
-      videoUrl: payload.videoUrl,
-      caption: payload.caption,
-      thumbOffset: payload.thumbOffset,
-      privacyLevel: payload.privacyLevel,
-    }),
-  });
-  const data = await response.json();
-
-  if (!response.ok || !data.ok) {
-    throw new Error(data.error || 'No se pudo publicar en TikTok.');
-  }
-
-  return data;
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -1873,7 +1746,7 @@ function normalizeGeminiEditPlan(plan = {}) {
 function getGeminiPrompt(baseVideo, reference, referenceMeta = {}, textConfig = {}) {
   const templates = LOCAL_VIDEO_TEMPLATES.map(template => `${template.key}: ${template.name} (${template.desc})`).join('\n');
   return `
-Actuá como un editor de Reels/TikTok. Analizá el video base y el video ejemplar para crear un plan de edición aplicable con FFmpeg.
+Actuá como un editor de Reels de Instagram. Analizá el video base y el video ejemplar para crear un plan de edición aplicable con FFmpeg.
 
 Objetivo: que el video base se parezca al ejemplar en ritmo, tipo de recorte, energía visual, ubicación de textos y duración, sin inventar escenas nuevas.
 
@@ -3159,7 +3032,6 @@ function renderHistory() {
 
   let items = state.history;
   if (filter === 'instagram') items = items.filter(h => h.platform === 'ig');
-  if (filter === 'tiktok')    items = items.filter(h => h.platform === 'tt');
   if (filter === 'draft')     items = items.filter(h => h.status === 'draft');
 
   if (items.length === 0) {
@@ -3178,12 +3050,9 @@ function renderHistory() {
   const typeMap = {
     publish: 'Reel',
     format:  'Edición',
-    'ai-video': 'Video IA',
   };
   const platformMap = {
     ig: 'Instagram',
-    tt: 'TikTok',
-    ai: 'Crear IA',
   };
 
   tbody.innerHTML = items.slice().reverse().map(h => `
@@ -3213,26 +3082,6 @@ document.getElementById('history-filter').addEventListener('change', renderHisto
 // ═══════════════════════════════════════════════════════════
 function renderSettings() {
   if (state.settings.backendUrl) document.getElementById('backend-url').value = state.settings.backendUrl;
-  const geminiKeyInput = document.getElementById('gemini-api-key');
-  const geminiModelInput = document.getElementById('gemini-model');
-  if (geminiKeyInput) geminiKeyInput.value = state.settings.geminiApiKey || '';
-  if (geminiModelInput) geminiModelInput.value = state.settings.geminiModel || 'gemini-1.5-pro';
-  const openaiKeyInput = document.getElementById('openai-api-key');
-  const openaiVideoModelInput = document.getElementById('openai-video-model');
-  const openaiTtsModelInput = document.getElementById('openai-tts-model');
-  const openaiVoiceInput = document.getElementById('openai-voice-id');
-  const lipSyncProviderInput = document.getElementById('lipsync-provider');
-  const lipSyncKeyInput = document.getElementById('lipsync-api-key');
-  const lipSyncEndpointInput = document.getElementById('lipsync-endpoint');
-  if (openaiKeyInput) openaiKeyInput.value = state.settings.openaiApiKey || '';
-  if (openaiVideoModelInput) openaiVideoModelInput.value = state.settings.openaiVideoModel || 'sora-2';
-  if (openaiTtsModelInput) openaiTtsModelInput.value = state.settings.openaiTtsModel || 'gpt-4o-mini-tts';
-  if (openaiVoiceInput) openaiVoiceInput.value = state.settings.openaiVoiceId || '';
-  if (lipSyncProviderInput) lipSyncProviderInput.value = state.settings.lipSyncProvider || 'sync-labs';
-  if (lipSyncKeyInput) lipSyncKeyInput.value = state.settings.lipSyncApiKey || '';
-  if (lipSyncEndpointInput) lipSyncEndpointInput.value = state.settings.lipSyncEndpoint || '';
-  updateEditorEngineStatus();
-  renderAiVideoStatus();
 
   // Tokens list
   const list = document.getElementById('tokens-list');
@@ -3242,7 +3091,7 @@ function renderSettings() {
     list.innerHTML = state.accounts.map(acc => `
       <div class="token-item">
         <div>
-          <div class="token-platform">${acc.platform === 'ig' ? '📸 Instagram' : '🎵 TikTok'} · ${acc.username}</div>
+          <div class="token-platform">📸 Instagram · ${acc.username}</div>
           <div class="token-expiry">Expira: ${formatDate(acc.expiresAt)}</div>
         </div>
         <span class="badge badge-active">Válido</span>
@@ -3306,10 +3155,6 @@ function setupTypedFileDrop(zoneId, handler, acceptsFile) {
 }
 
 setupDragDrop('upload-zone', 'video-input', handleVideoUpload);
-setupDragDrop('editor-upload-zone', 'editor-video-input', handleEditorUpload);
-setupDragDrop('reference-upload-zone', 'reference-video-input', handleReferenceUpload);
-setupTypedFileDrop('ai-photo-upload-zone', handleAiPhotoUpload, file => file.type.startsWith('image/'));
-setupTypedFileDrop('ai-voice-upload-zone', handleAiVoiceSampleUpload, file => file.type.startsWith('audio/') || file.type.startsWith('video/'));
 
 function setupInstagramOAuthFields() {
   const callbackInput = document.getElementById('ig-callback');
@@ -3321,39 +3166,25 @@ function setupInstagramOAuthFields() {
   if (appIdInput) appIdInput.value = localStorage.getItem('rf_ig_app_id') || INSTAGRAM_APP_ID;
 }
 
-function setupTikTokOAuthFields() {
-  const callbackInput = document.getElementById('tt-callback');
-  const scopesInput = document.getElementById('tt-scopes');
-  const clientKeyInput = document.getElementById('tt-client-key');
-
-  if (callbackInput) callbackInput.value = getTikTokCallbackUrl();
-  if (scopesInput) scopesInput.value = TIKTOK_SCOPES;
-  if (clientKeyInput) clientKeyInput.value = localStorage.getItem('rf_tt_client_key') || TIKTOK_CLIENT_KEY;
-}
-
-function setupAiVideoCreatorEvents() {
-  const voiceMode = document.getElementById('ai-voice-mode');
-  if (voiceMode) voiceMode.addEventListener('change', renderAiVideoStatus);
-}
-
 // ═══════════════════════════════════════════════════════════
 //  INIT
 // ═══════════════════════════════════════════════════════════
 function init() {
   syncGeminiGlobals();
   setupInstagramOAuthFields();
-  setupTikTokOAuthFields();
   setupAiVideoCreatorEvents();
+
+  state.accounts = state.accounts.filter(account => account.platform === 'ig');
+  state.history = state.history.filter(item => item.platform !== 'tt');
+  state.selectedAccounts = new Set([...state.selectedAccounts].filter(id => state.accounts.some(account => account.id === id)));
+  saveAccounts();
+  saveHistory();
 
   // Restore accounts
   renderIGAccounts();
-  renderTTAccounts();
 
   // Initial page
   navigateTo('dashboard');
-
-  // Update editor counters
-  updateReferenceCount();
 
   console.log('%c ReelFlow v1.0 ', 'background:#7c6dfa;color:white;padding:4px 8px;border-radius:4px;font-family:monospace;font-weight:bold');
   console.log('Frontend scaffold listo. Conectá el backend en:', state.settings.backendUrl);

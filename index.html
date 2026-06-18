@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="tiktok-developers-site-verification" content="5kus0LqkVvlvbr1XZADupXbVpm8rYBd0" />
   <title>ReelFlow — Panel de Publicación</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b0b12'/%3E%3Cpath d='M25 18l22 14-22 14V18z' fill='%237c6dfa'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -105,7 +104,7 @@
         <section class="page active" id="page-dashboard">
           <div class="page-header">
             <h1 class="page-title">Bienvenido a ReelFlow</h1>
-            <p class="page-subtitle">Publicá, editá y gestioná tus reels desde un solo lugar.</p>
+            <p class="page-subtitle">Publicá y gestioná tus reels desde un solo lugar.</p>
           </div>
 
           <div class="stats-grid">
@@ -197,7 +196,7 @@
           <div class="page-header">
             <div>
               <h1 class="page-title">Cuentas</h1>
-              <p class="page-subtitle">Conectá y gestioná tus cuentas de Instagram y TikTok.</p>
+              <p class="page-subtitle">Conectá y gestioná tus cuentas de Instagram con Meta API.</p>
             </div>
           </div>
 
@@ -243,46 +242,6 @@
               </div>
             </div>
 
-            <div class="platform-card" id="platform-tiktok">
-              <div class="platform-header">
-                <div class="platform-logo tt-gradient">
-                  <svg viewBox="0 0 24 24" width="28" height="28" fill="white"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.79 1.53V6.78a4.85 4.85 0 01-1.02-.09z"/></svg>
-                </div>
-                <div class="platform-info">
-                  <h3>TikTok</h3>
-                  <p>Content Posting API · Videos</p>
-                </div>
-                <div class="platform-status" id="tt-status">
-                  <span class="badge badge-inactive">Sin conectar</span>
-                </div>
-              </div>
-              <div class="platform-body">
-                <div class="credentials-form" id="tt-credentials">
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label>Client Key</label>
-                      <input type="text" id="tt-client-key" placeholder="Tu TikTok Client Key" class="form-input" />
-                    </div>
-                    <div class="form-group">
-                      <label>Scopes</label>
-                      <input type="text" id="tt-scopes" value="user.info.basic,video.publish" class="form-input" readonly />
-                    </div>
-                  </div>
-                  <div class="form-group">
-                    <label>Callback URL</label>
-                    <div class="input-with-copy">
-                      <input type="text" id="tt-callback" value="https://reelflow-topaz.vercel.app/auth/tiktok/callback" class="form-input" readonly />
-                      <button class="btn-copy" onclick="copyToClipboard('tt-callback')">Copiar</button>
-                    </div>
-                  </div>
-                  <button class="btn btn-tt" onclick="connectTikTok()">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="white"><path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.27 6.27 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.79 1.53V6.78a4.85 4.85 0 01-1.02-.09z"/></svg>
-                    Conectar con TikTok
-                  </button>
-                </div>
-                <div class="connected-accounts" id="tt-accounts-list"></div>
-              </div>
-            </div>
           </div>
 
           <!-- Token info banner -->
@@ -290,7 +249,7 @@
             <span class="info-icon">ℹ</span>
             <div>
               <strong>Tokens de acceso</strong>
-              <p>Los tokens de Instagram tienen una validez de 60 días y se renuevan automáticamente. Los de TikTok se renuevan cada 24 horas con el refresh token.</p>
+              <p>Los tokens de Instagram tienen una validez de 60 días y se renuevan automáticamente.</p>
             </div>
           </div>
         </section>
@@ -363,15 +322,6 @@
                   <label>Frame de portada (segundos)</label>
                   <input type="number" class="form-input" id="cover-time" value="0" min="0" step="0.1" />
                 </div>
-                <div class="form-group">
-                  <label>Visibilidad TikTok</label>
-                  <select class="form-input" id="tiktok-privacy">
-                    <option value="SELF_ONLY">Solo yo</option>
-                    <option value="MUTUAL_FOLLOW_FRIENDS">Amigos mutuos</option>
-                    <option value="FOLLOWER_OF_CREATOR">Seguidores</option>
-                    <option value="PUBLIC_TO_EVERYONE">Publico</option>
-                  </select>
-                </div>
               </div>
             </div>
 
@@ -426,7 +376,6 @@
           </div>
 
           <div class="editor-layout">
-            <!-- Step 1: Upload -->
             <div class="editor-step" id="editor-step-1">
               <div class="step-header">
                 <div class="step-number">01</div>
@@ -447,7 +396,6 @@
               <div class="editor-videos-list" id="editor-videos-list"></div>
             </div>
 
-            <!-- Step 2: Instagram formats -->
             <div class="editor-step" id="editor-step-2">
               <div class="step-header">
                 <div class="step-number">02</div>
@@ -499,7 +447,6 @@
               </div>
             </div>
 
-            <!-- Step 3: Customize & Generate -->
             <div class="editor-step" id="editor-step-3">
               <div class="step-header">
                 <div class="step-number">03</div>
@@ -550,7 +497,6 @@
               </div>
             </div>
 
-            <!-- Step 4: Results -->
             <div class="editor-step" id="editor-step-4" style="display:none">
               <div class="step-header">
                 <div class="step-number">04</div>
@@ -770,7 +716,6 @@
               <select class="form-input select-sm" id="history-filter">
                 <option value="all">Todo</option>
                 <option value="instagram">Instagram</option>
-                <option value="tiktok">TikTok</option>
                 <option value="draft">Borradores</option>
               </select>
             </div>
@@ -823,73 +768,6 @@
                 <input type="text" class="form-input" value="Local en el navegador" readonly />
               </div>
               <button class="btn btn-primary btn-sm" onclick="saveSettings()">Guardar</button>
-            </div>
-
-            <div class="card">
-              <div class="card-title">Gemini</div>
-              <div class="form-group">
-                <label>Gemini API Key</label>
-                <input type="password" class="form-input" id="gemini-api-key" placeholder="Pegá tu API key de Google AI Studio" autocomplete="off" />
-                <div class="form-hint">
-                  Creá una key gratuita en
-                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>.
-                </div>
-              </div>
-              <div class="form-group">
-                <label>Modelo de análisis</label>
-                <input type="text" class="form-input" id="gemini-model" value="gemini-1.5-pro" placeholder="gemini-1.5-pro" />
-                <div class="form-hint">Gemini analiza el video y FFmpeg renderiza la edición en tu navegador.</div>
-              </div>
-              <button class="btn btn-primary btn-sm" onclick="saveSettings()">Guardar Gemini</button>
-            </div>
-
-            <div class="card">
-              <div class="card-title">OpenAI Video / Voz</div>
-              <div class="form-group">
-                <label>OpenAI API Key</label>
-                <input type="password" class="form-input" id="openai-api-key" placeholder="Pegá tu API key de OpenAI" autocomplete="off" />
-                <div class="form-hint">Para producción conviene mover esta key a variables de entorno del backend.</div>
-              </div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Modelo de video</label>
-                  <input type="text" class="form-input" id="openai-video-model" value="sora-2" placeholder="sora-2" />
-                </div>
-                <div class="form-group">
-                  <label>Modelo de voz</label>
-                  <input type="text" class="form-input" id="openai-tts-model" value="gpt-4o-mini-tts" placeholder="gpt-4o-mini-tts" />
-                </div>
-              </div>
-              <div class="form-group">
-                <label>Voice ID personalizado</label>
-                <input type="text" class="form-input" id="openai-voice-id" placeholder="Ej: voice_..." />
-                <div class="form-hint">Usalo si ya creaste una voz personalizada autorizada.</div>
-              </div>
-              <button class="btn btn-primary btn-sm" onclick="saveSettings()">Guardar OpenAI</button>
-            </div>
-
-            <div class="card">
-              <div class="card-title">Lip-sync avanzado</div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Proveedor</label>
-                  <select class="form-input" id="lipsync-provider">
-                    <option value="sync-labs">Sync Labs</option>
-                    <option value="heygen">HeyGen</option>
-                    <option value="d-id">D-ID</option>
-                    <option value="custom">Custom</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label>API Key</label>
-                  <input type="password" class="form-input" id="lipsync-api-key" placeholder="Key del proveedor de lip-sync" autocomplete="off" />
-                </div>
-              </div>
-              <div class="form-group">
-                <label>Endpoint custom</label>
-                <input type="text" class="form-input" id="lipsync-endpoint" placeholder="Opcional si usás un backend propio" />
-              </div>
-              <button class="btn btn-primary btn-sm" onclick="saveSettings()">Guardar lip-sync</button>
             </div>
 
             <div class="card">

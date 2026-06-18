@@ -252,9 +252,6 @@
 .publisher-left { display: flex; flex-direction: column; gap: 20px; }
 .publisher-right { display: flex; flex-direction: column; gap: 16px; position: sticky; top: calc(var(--topbar-h) + 20px); }
 
-/* ── Editor layout ───────────────────────────── */
-.editor-layout { display: flex; flex-direction: column; gap: 32px; }
-
 /* ── Settings grid ───────────────────────────── */
 .settings-grid {
   display: grid;
