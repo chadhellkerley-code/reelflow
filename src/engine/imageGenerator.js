@@ -6,9 +6,11 @@ import * as kineticSubtitles from '../formats/kinetic_subtitles.js';
 import * as minimalText from '../formats/minimal_text.js';
 import * as povStyle from '../formats/pov_style.js';
 import * as splitContext from '../formats/split_context.js';
+import { generateGeminiContent } from './geminiClient.js';
 import { clamp, getIdeas, roundTime } from '../formats/_helpers.js';
 
-const DEFAULT_IMAGE_MODEL = 'gemini-2.0-flash-preview-image-generation';
+const DEFAULT_IMAGE_MODEL = 'gemini-2.5-flash-image';
+const DEFAULT_IMAGE_FALLBACK_MODELS = ['gemini-2.0-flash-preview-image-generation'];
 const DEFAULT_MAX_IMAGES = 10;
 const DEFAULT_CONCURRENCY = 3;
 
@@ -52,15 +54,15 @@ const LOOK_STYLE_PROMPTS = {
 };
 
 function getApiKey(options = {}) {
-  return String(options.apiKey || options.geminiApiKey || window.GEMINI_API_KEY || '').trim();
+  return String(options.apiKey || options.geminiApiKey || globalThis.GEMINI_API_KEY || '').trim();
 }
 
 function getImageModel(options = {}) {
-  return String(options.imageModel || options.geminiImageModel || window.GEMINI_IMAGE_MODEL || DEFAULT_IMAGE_MODEL).trim();
+  return String(options.imageModel || options.geminiImageModel || globalThis.GEMINI_IMAGE_MODEL || DEFAULT_IMAGE_MODEL).trim();
 }
 
 function getOverlayOpacity(options = {}) {
-  const value = Number(options.imageOverlayOpacity ?? options.overlayOpacity ?? window.IMAGE_OVERLAY_OPACITY ?? 0.55);
+  const value = Number(options.imageOverlayOpacity ?? options.overlayOpacity ?? globalThis.IMAGE_OVERLAY_OPACITY ?? 0.55);
   return Number.isFinite(value) ? clamp(value, 0.05, 1) : 0.55;
 }
 
@@ -104,14 +106,15 @@ async function requestGeminiImage(prompt, options = {}) {
   if (!apiKey) throw new Error('Falta configurar GEMINI_API_KEY para generar imagenes.');
 
   const model = getImageModel(options);
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-    },
-    body: JSON.stringify({
+  const { payload } = await generateGeminiContent({
+    apiKey,
+    model,
+    fallbackModels: options.imageFallbackModels || globalThis.GEMINI_IMAGE_FALLBACK_MODELS || DEFAULT_IMAGE_FALLBACK_MODELS,
+    retries: options.geminiImageRetries ?? 1,
+    onProgress: options.onProgress,
+    step: 'images',
+    purpose: 'Imagen Gemini',
+    body: {
       contents: [{
         role: 'user',
         parts: [{ text: prompt }],
@@ -119,13 +122,8 @@ async function requestGeminiImage(prompt, options = {}) {
       generationConfig: {
         responseModalities: ['IMAGE'],
       },
-    }),
+    },
   });
-
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || 'Gemini no pudo generar la imagen.');
-  }
 
   const image = payload?.candidates?.[0]?.content?.parts
     ?.map(normalizeImagePart)

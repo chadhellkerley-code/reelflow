@@ -1,4 +1,7 @@
+import { generateGeminiContent } from './geminiClient.js';
+
 const DEFAULT_GEMINI_MODEL = 'gemini-1.5-pro';
+const DEFAULT_GEMINI_FALLBACK_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 const INLINE_VIDEO_MAX_BYTES = 18 * 1024 * 1024;
 const GEMINI_FILES_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
@@ -153,7 +156,6 @@ export async function transcribeVideo(videoFile, options = {}) {
   const model = String(options.model || window.GEMINI_MODEL || DEFAULT_GEMINI_MODEL).trim();
   if (!apiKey) throw new Error('Falta configurar window.GEMINI_API_KEY.');
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   const prompt = `
 Transcribe el audio de este video con timestamps exactos por palabra.
 Devolve SOLO JSON puro, sin markdown ni texto adicional.
@@ -169,13 +171,15 @@ Formato exacto:
   const videoPart = await buildGeminiVideoPart(videoFile, apiKey, options);
 
   options.onProgress?.({ step: 'transcription', message: 'Transcribiendo audio con Gemini...' });
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-    },
-    body: JSON.stringify({
+  const { payload } = await generateGeminiContent({
+    apiKey,
+    model,
+    fallbackModels: options.fallbackModels || options.geminiFallbackModels || window.GEMINI_FALLBACK_MODELS || DEFAULT_GEMINI_FALLBACK_MODELS,
+    retries: options.geminiRetries ?? 2,
+    onProgress: options.onProgress,
+    step: 'transcription',
+    purpose: 'Transcripcion Gemini',
+    body: {
       contents: [{
         role: 'user',
         parts: [
@@ -187,13 +191,8 @@ Formato exacto:
         temperature: 0.1,
         responseMimeType: 'application/json',
       },
-    }),
+    },
   });
-
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(payload?.error?.message || 'Gemini no pudo transcribir el video.');
-  }
 
   const text = payload?.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('\n');
   return normalizeTranscription(parseGeminiJson(text));

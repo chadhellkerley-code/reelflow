@@ -3129,6 +3129,7 @@ function renderEditorVideos() {
         <div class="editor-job-status">
           <strong>${escapeHtml(getEditorCopyLabel(activeCopy))}</strong>
           <div>${escapeHtml(activeCopy?.status || 'queued')} · ${activeCopy?.progress ? `${Math.round(activeCopy.progress)}%` : '0%'}</div>
+          ${activeCopy?.status === 'failed' && activeCopy.error ? `<div class="editor-job-error">${escapeHtml(activeCopy.error)}</div>` : ''}
         </div>
       </article>
     `;
@@ -4031,6 +4032,254 @@ async function computeAudioSignature(file) {
   }
 }
 
+function getEditorRecorderMimeType() {
+  if (typeof MediaRecorder === 'undefined') return '';
+  const candidates = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+  ];
+  return candidates.find(type => MediaRecorder.isTypeSupported(type)) || '';
+}
+
+async function loadCanvasDrawable(blob) {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(blob);
+      return {
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        close: () => bitmap.close(),
+      };
+    } catch {
+      // Fallback to Image below.
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({
+        source: image,
+        width: image.naturalWidth || image.width || 0,
+        height: image.naturalHeight || image.height || 0,
+        close: () => {},
+      });
+    };
+    image.onerror = error => {
+      URL.revokeObjectURL(url);
+      reject(error);
+    };
+    image.src = url;
+  });
+}
+
+function getEditorCanvasSourceRect(videoWidth, videoHeight, plan) {
+  const zoom = Math.max(0.1, Number(plan?.zoom || 1));
+  const crop = Math.max(0.1, Number(plan?.crop || 1));
+  const visibleScale = Math.max(0.1, Math.min(1, crop / zoom));
+  const sourceWidth = Math.max(2, Math.round(videoWidth * visibleScale));
+  const sourceHeight = Math.max(2, Math.round(videoHeight * visibleScale));
+  return {
+    sx: Math.max(0, Math.round((videoWidth - sourceWidth) / 2)),
+    sy: Math.max(0, Math.round((videoHeight - sourceHeight) / 2)),
+    sw: sourceWidth,
+    sh: sourceHeight,
+  };
+}
+
+function getEditorCanvasOverlayPosition(copy, overlayWidth, overlayHeight, width, height) {
+  const position = getEditorTitlePosition(copy);
+  const x = Math.round((width * position.x / 100) - (overlayWidth / 2));
+  const y = Math.round((height * position.y / 100) - (overlayHeight / 2));
+  return {
+    x: Math.max(0, Math.min(width - overlayWidth, x)),
+    y: Math.max(0, Math.min(height - overlayHeight, y)),
+  };
+}
+
+async function composeEditorVariantVideo(project, copy, width, height, plan, hasAudio) {
+  const overlay = await buildEditorTitleOverlay(project, copy, width, height);
+  const overlayDrawable = await loadCanvasDrawable(overlay.blob);
+  const video = document.createElement('video');
+  const videoUrl = URL.createObjectURL(project.file);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const frameRate = 30;
+  const recorderMimeType = getEditorRecorderMimeType();
+  let audioContext = null;
+  let audioSource = null;
+  let audioDestination = null;
+  let playbackStarted = false;
+
+  if (!ctx) {
+    overlayDrawable.close?.();
+    URL.revokeObjectURL(videoUrl);
+    if (overlay.overlayUrl) URL.revokeObjectURL(overlay.overlayUrl);
+    throw new Error('No se pudo crear el canvas del editor.');
+  }
+
+  canvas.width = width;
+  canvas.height = height;
+
+  video.src = videoUrl;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'auto';
+  video.playbackRate = Math.max(0.1, Number(plan.speed || 1));
+
+  try {
+    await waitForVideoEvent(video, 'loadedmetadata');
+    await setVideoTime(video, 0);
+
+    const duration = Number.isFinite(video.duration) && video.duration > 0
+      ? video.duration
+      : Math.max(1, Number(project.duration || 1));
+    const playbackSeconds = duration / Math.max(0.1, Number(plan.speed || 1));
+    const delaySeconds = Math.max(0, Number(plan.delayMs || 0) / 1000);
+    const recordSeconds = delaySeconds + (hasAudio ? Math.min(playbackSeconds, Math.max(1, Number(plan.targetEnd || playbackSeconds))) : playbackSeconds);
+    const overlayPosition = getEditorCanvasOverlayPosition(copy, overlayDrawable.width, overlayDrawable.height, width, height);
+    const sourceRect = getEditorCanvasSourceRect(video.videoWidth || width, video.videoHeight || height, plan);
+    const brightness = Math.max(0.5, Math.min(1.5, 1 + Number(plan.brightness || 0)));
+    const recordedTracks = [];
+
+    const canvasStream = canvas.captureStream(frameRate);
+    recordedTracks.push(...canvasStream.getVideoTracks());
+
+    if (hasAudio) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        try {
+          audioContext = new AudioCtx();
+          audioSource = audioContext.createMediaElementSource(video);
+          audioDestination = audioContext.createMediaStreamDestination();
+          audioSource.connect(audioDestination);
+          recordedTracks.push(...audioDestination.stream.getAudioTracks());
+        } catch {
+          recordedTracks.length = 0;
+          recordedTracks.push(...canvasStream.getVideoTracks());
+        }
+      }
+    }
+
+    const captureStream = new MediaStream(recordedTracks);
+    const recorder = new MediaRecorder(captureStream, recorderMimeType ? { mimeType: recorderMimeType } : undefined);
+    const chunks = [];
+    recorder.ondataavailable = event => {
+      if (event.data.size) chunks.push(event.data);
+    };
+    const recorderStopped = new Promise(resolve => {
+      recorder.onstop = resolve;
+    });
+
+    recorder.start();
+    const startTime = performance.now();
+    const frameDelay = 1000 / frameRate;
+
+    while ((performance.now() - startTime) / 1000 < recordSeconds) {
+      const elapsedSeconds = (performance.now() - startTime) / 1000;
+      if (!playbackStarted && elapsedSeconds >= delaySeconds) {
+        playbackStarted = true;
+        audioContext?.resume?.().catch(() => {});
+        await video.play().catch(() => {});
+      }
+
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, width, height);
+      ctx.save();
+      ctx.filter = `brightness(${brightness})`;
+      ctx.drawImage(
+        video,
+        sourceRect.sx,
+        sourceRect.sy,
+        sourceRect.sw,
+        sourceRect.sh,
+        0,
+        0,
+        width,
+        height,
+      );
+      ctx.restore();
+
+      ctx.drawImage(
+        overlayDrawable.source,
+        overlayPosition.x,
+        overlayPosition.y,
+      );
+
+      await sleep(frameDelay);
+    }
+
+    if (!playbackStarted) {
+      audioContext?.resume?.().catch(() => {});
+      await video.play().catch(() => {});
+    }
+
+    recorder.stop();
+    await recorderStopped;
+
+    const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
+    return {
+      blob,
+      mimeType: recorder.mimeType || 'video/webm',
+      hasAudio: Boolean(audioDestination?.stream?.getAudioTracks?.().length),
+    };
+  } finally {
+    if (playbackStarted) {
+      video.pause();
+    }
+    audioSource?.disconnect?.();
+    audioDestination?.disconnect?.();
+    if (audioContext) await audioContext.close().catch(() => {});
+    URL.revokeObjectURL(videoUrl);
+    overlayDrawable.close?.();
+    if (overlay.overlayUrl) URL.revokeObjectURL(overlay.overlayUrl);
+  }
+}
+
+async function transcodeEditorRecording(runtime, recording, outputName, hasAudio) {
+  const inputName = `recording-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.webm`;
+  await runtime.instance.writeFile(inputName, await runtime.fetchFile(recording.blob));
+
+  try {
+    const args = ['-i', inputName];
+    if (hasAudio && recording.hasAudio) {
+      args.push(
+        '-map', '0:v:0',
+        '-map', '0:a:0?',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+      );
+    } else {
+      args.push('-map', '0:v:0', '-an');
+    }
+
+    args.push(
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-crf', '28',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', 'faststart',
+      '-shortest',
+      outputName,
+    );
+
+    await execFFmpegChecked(runtime.instance, args);
+    const data = await runtime.instance.readFile(outputName);
+    const blob = new Blob([data], { type: 'video/mp4' });
+    return {
+      blob,
+      file: new File([blob], outputName, { type: 'video/mp4' }),
+      url: URL.createObjectURL(blob),
+    };
+  } finally {
+    await runtime.instance.deleteFile(inputName).catch(() => {});
+  }
+}
+
 function cosineSimilarity(a, b) {
   const length = Math.min(a.length, b.length);
   let dot = 0;
@@ -4103,6 +4352,10 @@ function applyVariantFilterToSize(width, height, plan) {
   };
 }
 
+function escapeFFmpegFilterExpression(value) {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/,/g, '\\,');
+}
+
 function getEditorFilterGraph(width, height, plan, copy, hasAudio) {
   const sizes = applyVariantFilterToSize(width, height, plan);
   const videoChain = [
@@ -4148,8 +4401,8 @@ function parseEditorFilterCommand(inputName, overlayFileName, outputName, width,
     `eq=brightness=${plan.brightness}:gamma=${plan.gamma}`,
     `setpts=PTS/${plan.speed}`,
   ].join(',');
-  const overlayX = `max(0,min(W-w,(W*${(titlePosition.x / 100).toFixed(4)})-(w/2)))`;
-  const overlayY = `max(0,min(H-h,(H*${(titlePosition.y / 100).toFixed(4)})-(h/2)))`;
+  const overlayX = escapeFFmpegFilterExpression(`max(0,min(W-w,(W*${(titlePosition.x / 100).toFixed(4)})-(w/2)))`);
+  const overlayY = escapeFFmpegFilterExpression(`max(0,min(H-h,(H*${(titlePosition.y / 100).toFixed(4)})-(h/2)))`);
   const base = hasAudio
     ? `[0:v]${videoChain}[vbase];[1:v]format=rgba[voverlay];[0:a]adelay=${plan.delayMs}|${plan.delayMs},atempo=${plan.speed}[aout];[vbase][voverlay]overlay=x=${overlayX}:y=${overlayY}:enable='between(t,0,${plan.targetEnd})'[vout]`
     : `[0:v]${videoChain}[vbase];[1:v]format=rgba[voverlay];[vbase][voverlay]overlay=x=${overlayX}:y=${overlayY}:enable='between(t,0,${plan.targetEnd})'[vout]`;
@@ -4280,8 +4533,6 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const plan = createVariantPlan(project, copy, attempt);
-    const overlay = await buildEditorTitleOverlay(project, copy, width, height);
-    const overlayName = `overlay.png`;
 
     try {
       copy.status = 'processing';
@@ -4289,14 +4540,9 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
       syncEditorProjectMetadata(project);
       refreshEditorUi();
 
-      await ffmpegRuntime.instance.writeFile(overlayName, await ffmpegRuntime.fetchFile(new File([overlay.blob], 'overlay.png', { type: 'image/png' })));
-
-      const args = parseEditorFilterCommand(inputName, overlayName, outputName, width, height, plan, copy, hasAudio);
-
-      await execFFmpegChecked(ffmpegRuntime.instance, args);
-      const data = await ffmpegRuntime.instance.readFile(outputName);
-      const blob = new Blob([data], { type: 'video/mp4' });
-      const file = new File([blob], outputName, { type: 'video/mp4' });
+      const recording = await composeEditorVariantVideo(project, copy, width, height, plan, hasAudio);
+      const output = await transcodeEditorRecording(ffmpegRuntime, recording, outputName, hasAudio);
+      const { blob, file, url } = output;
       const frame = await loadVideoFrame(file, 0.45).catch(() => null);
       const hash = frame ? computePhashFromImageData(frame) : [];
       const audioSignature = hasAudio ? await computeAudioSignature(file).catch(() => []) : [];
@@ -4304,16 +4550,10 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
 
       if (!estimateSimilarity(signature, previousAccepted)) {
         lastError = new Error('La variante resultó demasiado parecida. Reintentando con otro seed.');
-        await ffmpegRuntime.instance.deleteFile(overlayName).catch(() => {});
         await ffmpegRuntime.instance.deleteFile(outputName).catch(() => {});
-        if (overlay.overlayUrl) URL.revokeObjectURL(overlay.overlayUrl);
+        if (url) URL.revokeObjectURL(url);
         continue;
       }
-
-      if (overlay.overlayUrl) URL.revokeObjectURL(overlay.overlayUrl);
-
-      await ffmpegRuntime.instance.deleteFile(overlayName).catch(() => {});
-      await ffmpegRuntime.instance.deleteFile(outputName).catch(() => {});
 
       copy.status = 'ready';
       copy.progress = 100;
@@ -4321,7 +4561,7 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
       copy.output = {
         blob,
         file,
-        url: URL.createObjectURL(blob),
+        url,
       };
       copy.hash = hash;
       copy.audioSignature = audioSignature;
@@ -4331,9 +4571,7 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
       lastError = error;
       copy.status = 'processing';
       copy.progress = Math.max(copy.progress, 25);
-      await ffmpegRuntime.instance.deleteFile(overlayName).catch(() => {});
       await ffmpegRuntime.instance.deleteFile(outputName).catch(() => {});
-      if (overlay?.overlayUrl) URL.revokeObjectURL(overlay.overlayUrl);
     }
   }
 
@@ -4371,7 +4609,7 @@ async function generateAllEditorVideos() {
         project.width = metadata.width || project.width || 1080;
         project.height = metadata.height || project.height || 1920;
         await runtime.instance.writeFile(inputName, await runtime.fetchFile(project.file));
-        const hasAudio = await probeHasAudio(runtime.instance, inputName, `probe-${project.id}.txt`).catch(() => true);
+        const hasAudio = await probeHasAudio(runtime.instance, inputName, `probe-${project.id}.txt`).catch(() => false);
         const previousAccepted = [];
         clearEditorQueueState(project);
         syncEditorProjectMetadata(project);
@@ -4413,9 +4651,14 @@ async function generateAllEditorVideos() {
     toast(getErrorMessage(error, 'No se pudo ejecutar la cola de generación.'), 'error');
   } finally {
     state.editorQueueRunning = false;
+    state.ffmpeg.activeStatusId = null;
     if (button) {
       button.disabled = false;
       button.textContent = 'Generar todo';
+    }
+    const statusNote = document.getElementById('editor-generate-status');
+    if (statusNote && !state.editorQueueRunning) {
+      statusNote.textContent = 'Generación finalizada';
     }
     refreshEditorUi();
   }

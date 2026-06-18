@@ -769,6 +769,13 @@
   color: var(--text-1);
 }
 
+.editor-job-error {
+  margin-top: 6px;
+  color: var(--danger);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .editor-job-progress {
   width: 100%;
 }
