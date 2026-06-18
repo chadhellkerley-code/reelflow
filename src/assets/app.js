@@ -5177,9 +5177,189 @@ function init() {
 
   // Initial page
   navigateTo('dashboard');
+}
 
-  console.log('%c ReelFlow v1.0 ', 'background:#7c6dfa;color:white;padding:4px 8px;border-radius:4px;font-family:monospace;font-weight:bold');
-  console.log('Frontend scaffold listo. Conectá el backend en:', state.settings.backendUrl);
+async function startVariantUniqueGeneration() {
+  const videoFile = state.editorVideos?.[0];
+  if (!videoFile) {
+    toast('Cargá un video en el editor primero', 'error');
+    return;
+  }
+
+  const ffmpegRuntime = state.ffmpeg;
+  if (!ffmpegRuntime?.instance) {
+    toast('FFmpeg no está disponible. Recargá la página.', 'error');
+    return;
+  }
+
+  const variantCount = parseInt(document.getElementById('variant-unique-count')?.value || '10', 10);
+  if (!Number.isFinite(variantCount) || variantCount < 1 || variantCount > 100) {
+    toast('Las variantes deben ser entre 1 y 100', 'error');
+    return;
+  }
+
+  const btnGenerate = document.getElementById('variant-unique-btn');
+  const progressContainer = document.getElementById('variant-unique-progress');
+  const progressBar = document.getElementById('variant-unique-progress-bar');
+  const progressText = document.getElementById('variant-unique-progress-text');
+  const successMessage = document.getElementById('variant-unique-success');
+
+  if (btnGenerate) btnGenerate.disabled = true;
+  if (progressContainer) progressContainer.style.display = 'block';
+  if (successMessage) successMessage.style.display = 'none';
+  if (progressBar) progressBar.style.width = '0%';
+  if (progressText) progressText.textContent = 'Preparando...';
+
+  const ffmpeg = ffmpegRuntime.instance || ffmpegRuntime;
+  const inputFileName = 'variant-input.mp4';
+  const variants = [];
+  const manifestEntries = [];
+  const previousAccepted = [];
+  const maxAttemptsPerVariant = 8;
+  let hasAudio = false;
+
+  try {
+    const { VariantTransformer } = await import('/src/engine/variantTransformer.js');
+    const metadata = await getBrowserVideoMetadata(videoFile);
+    const targetFrame = metadata.width && metadata.height
+      ? { width: metadata.width, height: metadata.height }
+      : null;
+    const inputBuffer = await videoFile.arrayBuffer();
+    await ffmpeg.writeFile(inputFileName, new Uint8Array(inputBuffer));
+    hasAudio = await probeHasAudio(ffmpeg, inputFileName, `variant-unique-audio-${Date.now()}.txt`).catch(() => false);
+
+    for (let i = 1; i <= variantCount; i += 1) {
+      const variantNum = String(i).padStart(3, '0');
+      const outputFileName = `variant-${variantNum}.mp4`;
+      let acceptedVariant = null;
+      let acceptedTransforms = null;
+      let acceptedSignature = null;
+
+      for (let attempt = 0; attempt < maxAttemptsPerVariant; attempt += 1) {
+        const transforms = VariantTransformer.generateRandomTransforms(i, attempt);
+        const ffmpegArgs = VariantTransformer.buildFFmpegCommand(
+          inputFileName,
+          outputFileName,
+          transforms,
+          hasAudio,
+          targetFrame,
+        );
+
+        if (progressText) {
+          progressText.textContent = `Variante ${i}/${variantCount} (${transforms.speed.toFixed(2)}x)`;
+        }
+
+        await execEditorFFmpegChecked(
+          ffmpegRuntime,
+          ffmpegArgs,
+          pct => {
+            const overallPct = ((i - 1 + (pct / 100)) / variantCount) * 100;
+            if (progressBar) progressBar.style.width = `${Math.min(overallPct, 95)}%`;
+            if (progressText) {
+              progressText.textContent = `Variante ${i}/${variantCount} (${transforms.speed.toFixed(2)}x)`;
+            }
+          },
+          `Error procesando variante ${variantNum}`,
+        );
+
+        const outputData = await ffmpeg.readFile(outputFileName);
+        const blob = new Blob([outputData], { type: 'video/mp4' });
+        const outputFile = new File([blob], outputFileName, { type: 'video/mp4' });
+        const frame = await loadVideoFrame(outputFile, 0.45).catch(() => null);
+        const hash = frame ? computePhashFromImageData(frame) : [];
+        const audioSignature = hasAudio
+          ? await computeAudioSignature(outputFile).catch(() => [])
+          : [];
+        const signature = { hash, audioSignature };
+
+        if (!estimateSimilarity(signature, previousAccepted)) {
+          await ffmpeg.deleteFile(outputFileName).catch(() => {});
+          continue;
+        }
+
+        acceptedVariant = { name: outputFileName, blob };
+        acceptedTransforms = transforms;
+        acceptedSignature = signature;
+        previousAccepted.push(signature);
+        variants.push(acceptedVariant);
+        manifestEntries.push({
+          filename: outputFileName,
+          size_mb: (blob.size / 1024 / 1024).toFixed(2),
+          transforms: acceptedTransforms,
+          phash: hash,
+          audio_signature: audioSignature,
+          attempts: attempt + 1,
+          unique_check_passed: true,
+        });
+        await ffmpeg.deleteFile(outputFileName).catch(() => {});
+        break;
+      }
+
+      if (!acceptedVariant || !acceptedTransforms || !acceptedSignature) {
+        throw new Error(`No se pudo generar la variante ${variantNum} sin duplicados.`);
+      }
+    }
+
+    if (progressBar) progressBar.style.width = '95%';
+    if (progressText) progressText.textContent = 'Empaquetando ZIP...';
+
+    const manifestJson = JSON.stringify({
+      generated_at: new Date().toISOString(),
+      original_file: videoFile.name,
+      total_variants: variants.length,
+      variants: manifestEntries,
+    }, null, 2);
+
+    const finalZip = await variantBuildZipWithManifest(variants, manifestJson);
+    variantDownloadZip(finalZip, 'variantes-unicas.zip');
+
+    if (progressContainer) progressContainer.style.display = 'none';
+    if (progressBar) progressBar.style.width = '0%';
+    if (successMessage) successMessage.style.display = 'block';
+
+    toast(`✓ ${variants.length} variantes generadas y descargadas`, 'success');
+  } catch (error) {
+    const errorMsg = error?.message || 'Error desconocido';
+    toast(`Error: ${errorMsg}`, 'error');
+  } finally {
+    await ffmpeg.deleteFile(inputFileName).catch(() => {});
+    if (btnGenerate) btnGenerate.disabled = false;
+    state.ffmpeg.activeStatusId = null;
+  }
+}
+
+async function variantBuildZipWithManifest(videoFiles, manifestJson) {
+  const manifestFile = {
+    name: 'manifest.json',
+    blob: new Blob([manifestJson], { type: 'application/json' }),
+  };
+
+  try {
+    const { default: JSZip } = await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm');
+    const zip = new JSZip();
+    for (const file of [...videoFiles, manifestFile]) {
+      zip.file(file.name, file.blob);
+    }
+    return zip.generateAsync({ type: 'blob' });
+  } catch {
+    return buildZipBlob([...videoFiles, manifestFile]);
+  }
+}
+
+function variantDownloadZip(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.style.display = 'none';
+
+  document.body.appendChild(link);
+  link.click();
+
+  setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 100);
 }
 
 init();

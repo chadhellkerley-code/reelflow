@@ -428,6 +428,68 @@
               </div>
             </div>
           </div>
+
+          <!-- ═══════════════════════════════════════════════════════════ -->
+          <!-- GENERADOR DE VARIANTES ÚNICAS PARA INSTAGRAM                -->
+          <!-- ═══════════════════════════════════════════════════════════ -->
+          <div style="margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--border);">
+            <div class="card">
+              <div class="card-title">🔄 Variantes Únicas para Instagram</div>
+
+              <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.6;">
+                Genera N copias de tu video con transformaciones imperceptibles (crop, zoom, velocidad, brillo).
+                Cada copia mantiene la apariencia visual, pero cambia su hash para que Instagram las trate como videos distintos.
+              </p>
+
+              <div class="form-group">
+                <label for="variant-unique-count">¿Cuántas variantes? (1-100)</label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <input
+                    type="range"
+                    id="variant-unique-count"
+                    class="form-input"
+                    min="1"
+                    max="100"
+                    value="10"
+                    step="1"
+                    style="flex: 1;"
+                    oninput="document.getElementById('variant-unique-count-display').textContent = this.value"
+                  />
+                  <span
+                    id="variant-unique-count-display"
+                    style="min-width: 50px; text-align: center; font-weight: 600; font-size: 14px;"
+                  >
+                    10
+                  </span>
+                </div>
+              </div>
+
+              <div id="variant-unique-progress" style="display: none; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                  <span id="variant-unique-progress-text" style="font-size: 12px;">Procesando...</span>
+                </div>
+                <div class="progress-bar">
+                  <div class="progress-fill" id="variant-unique-progress-bar" style="width: 0%; transition: width 0.2s;"></div>
+                </div>
+              </div>
+
+              <div
+                id="variant-unique-success"
+                style="display: none; margin-bottom: 12px; padding: 12px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: var(--radius-md); color: #16a34a; font-size: 12px; line-height: 1.5;"
+              >
+                ✓ <strong>Variantes generadas exitosamente.</strong> Descargando archivo ZIP con todos los videos...
+              </div>
+
+              <button
+                class="btn btn-primary"
+                id="variant-unique-btn"
+                onclick="startVariantUniqueGeneration()"
+                style="width: 100%;"
+              >
+                ⚡ Generar Variantes Únicas
+              </button>
+            </div>
+          </div>
         </section>
 
         <!-- ═══════════════════════════════════════ HISTORIAL ═══ -->
