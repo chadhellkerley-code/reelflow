@@ -329,6 +329,419 @@
 
 .upload-zone-editor { padding: 32px; }
 
+/* ── Editor overhaul ─────────────────────────── */
+.editor-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.editor-toolbar,
+.editor-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.editor-toolbar {
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(124,109,250,0.12), rgba(255,255,255,0.02));
+}
+
+.editor-toolbar-copy,
+.editor-history-header h3 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-1);
+}
+
+.editor-toolbar-actions,
+.editor-history-stats,
+.editor-copy-tabs,
+.editor-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.editor-upload-panel,
+.editor-history-panel,
+.editor-project-card,
+.editor-summary-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.editor-upload-panel,
+.editor-history-panel {
+  padding: 20px;
+}
+
+.editor-upload-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.editor-video-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+}
+
+.editor-project-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+}
+
+.editor-project-card.selected {
+  border-color: rgba(124,109,250,0.55);
+  box-shadow: 0 0 0 1px rgba(124,109,250,0.22), 0 10px 30px rgba(0,0,0,0.22);
+}
+
+.editor-project-top {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.editor-project-thumb {
+  width: 72px;
+  height: 96px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #000;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+}
+
+.editor-project-thumb video,
+.editor-copy-preview video,
+.editor-config-preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #000;
+}
+
+.editor-project-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.editor-project-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-project-meta {
+  font-size: 12px;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+
+.editor-project-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.editor-project-actions .btn-primary {
+  flex: 1;
+  justify-content: center;
+}
+
+.editor-mini-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.editor-history-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 14px 0 18px;
+}
+
+.editor-summary-box {
+  padding: 14px 16px;
+}
+
+.editor-summary-box strong {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--text-1);
+  line-height: 1;
+}
+
+.editor-summary-box span {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.editor-history-table-wrapper {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.editor-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 860px;
+  font-size: 14px;
+}
+
+.editor-history-table th,
+.editor-history-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.editor-history-table th {
+  background: var(--bg-3);
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.editor-history-table tbody tr:hover {
+  background: var(--bg-3);
+}
+
+.editor-history-table .empty-row td {
+  padding: 0;
+}
+
+.editor-state-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.editor-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 140px;
+}
+
+.editor-progress .progress-bar {
+  height: 6px;
+}
+
+.editor-progress-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.editor-history-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.editor-modal {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  gap: 20px;
+}
+
+.editor-modal-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.editor-config-preview {
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid var(--border);
+}
+
+.editor-modal-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-1);
+  word-break: break-word;
+}
+
+.editor-config-area {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.editor-copy-tabs {
+  padding: 4px;
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  max-height: 176px;
+  overflow: auto;
+}
+
+.editor-copy-tab {
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  background: transparent;
+  color: var(--text-2);
+  border: 1px solid transparent;
+}
+
+.editor-copy-tab.active {
+  background: var(--surface);
+  color: var(--text-1);
+  border-color: var(--accent);
+}
+
+.editor-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.editor-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+}
+
+.editor-control-group label,
+.editor-control-row label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-2);
+}
+
+.editor-control-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.editor-control-row .range-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.editor-switch-row {
+  display: flex;
+  gap: 10px;
+}
+
+.editor-switch-row .btn {
+  flex: 1;
+  justify-content: center;
+}
+
+.editor-font-swatch,
+.editor-bg-swatch {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.editor-swatch-btn {
+  border: 1px solid var(--border);
+  background: var(--bg-3);
+  border-radius: 12px;
+  padding: 10px 12px;
+  text-align: left;
+  transition: all var(--transition);
+  color: var(--text-1);
+}
+
+.editor-swatch-btn.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(124,109,250,0.15);
+}
+
+.editor-swatch-btn small {
+  display: block;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+
+.editor-title-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  border-radius: 12px;
+  margin-top: 4px;
+  max-width: 100%;
+}
+
+.editor-title-preview.hidden-bg {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.editor-title-preview span {
+  max-width: 100%;
+  word-break: break-word;
+}
+
+.editor-scroll-note {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.editor-job-status {
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.editor-job-status strong {
+  color: var(--text-1);
+}
+
+.editor-job-progress {
+  width: 100%;
+}
+
+.editor-job-progress .progress-bar {
+  margin-top: 8px;
+}
+
+.editor-history-panel .btn-sm {
+  white-space: nowrap;
+}
+
 /* Video preview */
 .video-preview-container {
   display: flex;
@@ -577,6 +990,13 @@
   box-shadow: var(--shadow-lg);
   animation: modalIn 0.25s ease;
 }
+.modal.modal-editor-wide {
+  max-width: 1220px;
+}
+.modal.modal-editor-wide .modal-body {
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+}
 @keyframes modalIn {
   from { opacity: 0; transform: scale(0.96) translateY(10px); }
   to   { opacity: 1; transform: scale(1) translateY(0); }
@@ -599,3 +1019,23 @@
 }
 .modal-close:hover { color: var(--text-1); }
 .modal-body { padding: 24px; }
+
+@media (max-width: 960px) {
+  .editor-modal {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-config-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-project-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .editor-project-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

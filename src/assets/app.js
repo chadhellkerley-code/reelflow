@@ -15,6 +15,11 @@ const state = {
   aiVideoPhotoUrl: '',
   aiVoiceSample: null,
   editorVideos: [],
+  editorProjects: [],
+  editorModalProjectId: null,
+  editorModalCopyIndex: 0,
+  editorPreviewMode: 'original',
+  editorQueueRunning: false,
   referenceVideos: [],
   selectedReferences: new Set(),
   selectedTemplates: new Set(['ig-cinematic-hook']),
@@ -60,6 +65,116 @@ const GEMINI_INLINE_VIDEO_MAX_BYTES = 18 * 1024 * 1024;
 const FFMPEG_CORE_VERSION = '0.12.10';
 const FFMPEG_FONT_URL = 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/inter/Inter%5Bopsz,wght%5D.ttf';
 const FFMPEG_FONT_FILE = 'Inter.ttf';
+
+const EDITOR_FONT_OPTIONS = [
+  { label: 'Syne', family: 'Syne, sans-serif' },
+  { label: 'DM Sans', family: 'DM Sans, sans-serif' },
+  { label: 'Inter', family: 'Inter, sans-serif' },
+  { label: 'Helvetica Neue', family: '"Helvetica Neue", Helvetica, Arial, sans-serif' },
+  { label: 'Arial', family: 'Arial, sans-serif' },
+  { label: 'Georgia', family: 'Georgia, serif' },
+  { label: 'Times New Roman', family: '"Times New Roman", Times, serif' },
+  { label: 'Trebuchet MS', family: '"Trebuchet MS", sans-serif' },
+  { label: 'Verdana', family: 'Verdana, sans-serif' },
+  { label: 'Tahoma', family: 'Tahoma, sans-serif' },
+  { label: 'Impact', family: 'Impact, sans-serif' },
+  { label: 'Arial Black', family: '"Arial Black", Arial, sans-serif' },
+  { label: 'Courier New', family: '"Courier New", monospace' },
+  { label: 'Lucida Sans', family: '"Lucida Sans Unicode", "Lucida Grande", sans-serif' },
+  { label: 'Gill Sans', family: '"Gill Sans", "Gill Sans MT", sans-serif' },
+  { label: 'Palatino', family: '"Palatino Linotype", Palatino, serif' },
+  { label: 'Garamond', family: 'Garamond, serif' },
+  { label: 'Baskerville', family: 'Baskerville, "Times New Roman", serif' },
+  { label: 'Futura', family: 'Futura, "Trebuchet MS", sans-serif' },
+  { label: 'Avenir', family: 'Avenir, "Helvetica Neue", sans-serif' },
+  { label: 'Montserrat', family: 'Montserrat, sans-serif' },
+  { label: 'Poppins', family: 'Poppins, sans-serif' },
+  { label: 'Bebas Neue', family: '"Bebas Neue", sans-serif' },
+  { label: 'Oswald', family: 'Oswald, sans-serif' },
+  { label: 'Anton', family: 'Anton, sans-serif' },
+  { label: 'Playfair Display', family: '"Playfair Display", serif' },
+  { label: 'Merriweather', family: 'Merriweather, serif' },
+  { label: 'Lora', family: 'Lora, serif' },
+  { label: 'Raleway', family: 'Raleway, sans-serif' },
+  { label: 'Rubik', family: 'Rubik, sans-serif' },
+  { label: 'Nunito Sans', family: '"Nunito Sans", sans-serif' },
+  { label: 'Work Sans', family: '"Work Sans", sans-serif' },
+  { label: 'Archivo', family: 'Archivo, sans-serif' },
+  { label: 'Manrope', family: 'Manrope, sans-serif' },
+  { label: 'Cabin', family: 'Cabin, sans-serif' },
+  { label: 'Josefin Sans', family: '"Josefin Sans", sans-serif' },
+  { label: 'League Spartan', family: '"League Spartan", sans-serif' },
+  { label: 'Abril Fatface', family: '"Abril Fatface", serif' },
+  { label: 'Cormorant Garamond', family: '"Cormorant Garamond", serif' },
+  { label: 'Space Grotesk', family: '"Space Grotesk", sans-serif' },
+  { label: 'Space Mono', family: '"Space Mono", monospace' },
+  { label: 'Source Sans 3', family: '"Source Sans 3", sans-serif' },
+  { label: 'Source Serif 4', family: '"Source Serif 4", serif' },
+  { label: 'IBM Plex Sans', family: '"IBM Plex Sans", sans-serif' },
+  { label: 'IBM Plex Serif', family: '"IBM Plex Serif", serif' },
+  { label: 'Sora', family: 'Sora, sans-serif' },
+  { label: 'DM Serif Display', family: '"DM Serif Display", serif' },
+  { label: 'PT Sans', family: '"PT Sans", sans-serif' },
+  { label: 'PT Serif', family: '"PT Serif", serif' },
+  { label: 'System UI', family: 'system-ui, sans-serif' },
+];
+
+const EDITOR_QUICK_COMBOS = [
+  { id: 'ig-bold', label: 'Instagram Bold', font: 'Montserrat, sans-serif', backgroundColor: '#e6683c' },
+  { id: 'ig-pop', label: 'Story Pop', font: 'Syne, sans-serif', backgroundColor: '#2563eb' },
+  { id: 'ig-premium', label: 'Premium Glass', font: 'Playfair Display, serif', backgroundColor: '#111827' },
+  { id: 'ig-neon', label: 'Neon Pulse', font: 'Sora, sans-serif', backgroundColor: '#8b5cf6' },
+  { id: 'ig-minimal', label: 'Minimal Soft', font: 'DM Sans, sans-serif', backgroundColor: '#f3f4f6' },
+  { id: 'ig-editorial', label: 'Editorial Cut', font: 'Cormorant Garamond, serif', backgroundColor: '#44403c' },
+  { id: 'ig-viral', label: 'Viral Hook', font: 'Anton, sans-serif', backgroundColor: '#f97316' },
+  { id: 'ig-clean', label: 'Clean Caption', font: 'Inter, sans-serif', backgroundColor: '#334155' },
+];
+
+const EDITOR_COLOR_OPTIONS = [
+  { label: 'Negro', value: '#050816' },
+  { label: 'Blanco', value: '#f8fafc' },
+  { label: 'Rojo', value: '#ef4444' },
+  { label: 'Naranja', value: '#f97316' },
+  { label: 'Amarillo', value: '#facc15' },
+  { label: 'Verde', value: '#22c55e' },
+  { label: 'Cian', value: '#06b6d4' },
+  { label: 'Azul', value: '#3b82f6' },
+  { label: 'Violeta', value: '#8b5cf6' },
+  { label: 'Rosa', value: '#ec4899' },
+  { label: 'Marrón', value: '#92400e' },
+  { label: 'Gris', value: '#64748b' },
+];
+
+function makeEditorBackgroundOption(index) {
+  const hue = (index * 23) % 360;
+  const hue2 = (hue + 38 + (index * 11)) % 360;
+  const hue3 = (hue + 170) % 360;
+  const base = `linear-gradient(135deg, hsl(${hue} 70% 22%), hsl(${hue2} 72% 14%))`;
+  const overlay = `radial-gradient(circle at 20% 20%, hsla(${hue3} 90% 65% / 0.35), transparent 45%)`;
+  return {
+    id: `bg-${index + 1}`,
+    label: `Fondo ${index + 1}`,
+    css: `${overlay}, ${base}`,
+    start: `hsl(${hue} 70% 24%)`,
+    end: `hsl(${hue2} 72% 14%)`,
+    accent: `hsl(${hue3} 90% 65%)`,
+  };
+}
+
+const EDITOR_BACKGROUND_OPTIONS = Array.from({ length: 50 }, (_, index) => makeEditorBackgroundOption(index));
+
+const EDITOR_DEFAULT_COPY = () => ({
+  title: '',
+  font: EDITOR_FONT_OPTIONS[0].family,
+  backgroundId: EDITOR_BACKGROUND_OPTIONS[0].id,
+  backgroundColor: '#111827',
+  showBackground: true,
+  size: 54,
+  opacity: 88,
+  padding: 18,
+  durationMode: 'all',
+  rangeEnd: 10,
+});
 
 const LOCAL_VIDEO_TEMPLATES = [
   {
@@ -391,6 +506,10 @@ function navigateTo(page) {
   // Page-specific init
   if (page === 'dashboard') renderDashboard();
   if (page === 'publisher') renderPublisherAccounts();
+  if (page === 'editor') {
+    renderEditorVideos();
+    renderEditorHistory();
+  }
   if (page === 'history')   renderHistory();
   if (page === 'settings')  renderSettings();
 }
@@ -431,6 +550,8 @@ function escapeHtml(value) {
 function openModal(title, html) {
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML = html;
+  const modal = document.querySelector('#modal-overlay .modal');
+  if (modal) modal.classList.toggle('modal-editor-wide', String(html || '').includes('editor-modal'));
   document.getElementById('modal-overlay').classList.add('open');
 }
 
@@ -839,11 +960,11 @@ function getErrorMessage(error, fallback = 'Ocurrió un error inesperado.') {
 // ═══════════════════════════════════════════════════════════
 //  EDITOR
 // ═══════════════════════════════════════════════════════════
-function handleEditorUpload(event) {
+function handleLegacyEditorUpload(event) {
   const file = Array.from(event.target.files).find(f => f.type.startsWith('video/'));
   if (!file) return;
   state.editorVideos = [file];
-  renderEditorVideos();
+  renderLegacyEditorVideos();
 }
 
 function getBrowserVideoDuration(file) {
@@ -1049,7 +1170,7 @@ async function analyzeReferenceVisualTemplate(file, duration = 0) {
   };
 }
 
-function renderEditorVideos() {
+function renderLegacyEditorVideos() {
   const list = document.getElementById('editor-videos-list');
   if (state.editorVideos.length === 0) { list.innerHTML = ''; return; }
 
@@ -1065,9 +1186,9 @@ function renderEditorVideos() {
   `).join('');
 }
 
-function removeEditorVideo(i) {
+function removeLegacyEditorVideo(i) {
   state.editorVideos.splice(i, 1);
-  renderEditorVideos();
+  renderLegacyEditorVideos();
 }
 
 function ffmpegOutputArgs(output) {
@@ -2811,6 +2932,1372 @@ async function generateFormats() {
 }
 
 // ═══════════════════════════════════════════════════════════
+//  EDITOR OVERHAUL
+// ═══════════════════════════════════════════════════════════
+
+function getEditorProject(projectId) {
+  return state.editorProjects.find(project => project.id === projectId) || null;
+}
+
+function getEditorActiveCopy(project) {
+  if (!project || !project.copies.length) return null;
+  const index = Math.max(0, Math.min(project.activeCopyIndex || 0, project.copies.length - 1));
+  return project.copies[index] || project.copies[0];
+}
+
+function getEditorCopyLabel(copy) {
+  if (!copy) return 'copia';
+  return copy.title?.trim() || `${copy.index}. copia${copy.index}`;
+}
+
+function getEditorBackgroundOptionById(backgroundId) {
+  return EDITOR_BACKGROUND_OPTIONS.find(option => option.id === backgroundId) || EDITOR_BACKGROUND_OPTIONS[0];
+}
+
+function getEditorFontOptionByFamily(family) {
+  return EDITOR_FONT_OPTIONS.find(option => option.family === family) || EDITOR_FONT_OPTIONS[0];
+}
+
+function cloneEditorCopyConfig(copy, index = copy?.index || 1) {
+  const base = EDITOR_DEFAULT_COPY();
+  return {
+    ...base,
+    ...copy,
+    index,
+    id: copy?.id || `copy_${Date.now()}_${index}`,
+    title: copy?.title || '',
+    status: copy?.status || 'queued',
+    progress: Number(copy?.progress || 0),
+    output: copy?.output || null,
+    hash: copy?.hash || null,
+    audioSignature: copy?.audioSignature || null,
+    attempts: Number(copy?.attempts || 0),
+  };
+}
+
+function createEditorCopy(project, index, sourceCopy = null) {
+  const source = sourceCopy || project?.copies?.[project.activeCopyIndex || 0] || null;
+  const config = cloneEditorCopyConfig(source, index);
+  return {
+    ...config,
+    id: `copy_${project.id}_${index}_${Date.now()}`,
+    index,
+    title: config.title || '',
+    backgroundId: config.backgroundId || EDITOR_BACKGROUND_OPTIONS[0].id,
+    backgroundColor: config.backgroundColor || '#111827',
+    showBackground: config.showBackground !== false,
+    size: Number(config.size || 54),
+    opacity: Number(config.opacity || 88),
+    padding: Number(config.padding || 18),
+    durationMode: config.durationMode || 'all',
+    rangeEnd: Number(config.rangeEnd || 10),
+    status: 'queued',
+    progress: 0,
+    output: null,
+    hash: null,
+    audioSignature: null,
+    attempts: 0,
+  };
+}
+
+function createEditorProject(file) {
+  const previewUrl = URL.createObjectURL(file);
+  const createdAt = new Date().toISOString();
+  const project = {
+    id: `project_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    file,
+    previewUrl,
+    name: file.name,
+    size: file.size,
+    createdAt,
+    updatedAt: createdAt,
+    duration: 0,
+    width: 0,
+    height: 0,
+    activeCopyIndex: 0,
+    previewMode: 'original',
+    copies: [],
+  };
+  project.copies = [createEditorCopy(project, 1)];
+  return project;
+}
+
+function syncEditorProjectMetadata(project) {
+  project.updatedAt = new Date().toISOString();
+}
+
+function ensureEditorCopyCount(project, targetCount) {
+  const count = Math.max(1, Math.min(500, Number(targetCount) || 1));
+  const current = project.copies.length;
+  const source = project.copies[project.activeCopyIndex] || project.copies[0] || null;
+
+  if (count > current) {
+    for (let index = current + 1; index <= count; index += 1) {
+      project.copies.push(createEditorCopy(project, index, source));
+    }
+  } else if (count < current) {
+    project.copies.slice(count).forEach(copy => {
+      if (copy?.output?.url) URL.revokeObjectURL(copy.output.url);
+    });
+    project.copies.length = count;
+  }
+
+  project.copies = project.copies.map((copy, index) => ({
+    ...copy,
+    index: index + 1,
+    id: copy.id || `copy_${project.id}_${index + 1}`,
+  }));
+
+  if (project.activeCopyIndex >= project.copies.length) {
+    project.activeCopyIndex = project.copies.length - 1;
+  }
+}
+
+function renderEditorVideos() {
+  const list = document.getElementById('editor-video-list');
+  if (!list) return;
+
+  if (!state.editorProjects.length) {
+    list.innerHTML = `
+      <div class="empty-state-small" style="grid-column:1/-1">
+        <p>No hay videos cargados todavía.</p>
+        <button class="btn btn-outline btn-sm" onclick="document.getElementById('editor-video-input').click()">Subir videos</button>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = state.editorProjects.map(project => {
+    const activeCopy = getEditorActiveCopy(project);
+    const readyCount = project.copies.filter(copy => copy.status === 'ready').length;
+    const failedCount = project.copies.filter(copy => copy.status === 'failed').length;
+    const progress = project.copies.length ? Math.round((project.copies.filter(copy => copy.status === 'ready' || copy.status === 'failed').length / project.copies.length) * 100) : 0;
+    return `
+      <article class="editor-project-card ${state.editorModalProjectId === project.id ? 'selected' : ''}">
+        <div class="editor-project-top">
+          <div class="editor-project-thumb">
+            <video src="${project.previewUrl}" muted playsinline preload="metadata"></video>
+          </div>
+          <div class="editor-project-info">
+            <div class="editor-project-name">${escapeHtml(project.name)}</div>
+            <div class="editor-project-meta">${formatBytes(project.size)} · ${project.copies.length} copia(s)</div>
+            <div class="editor-project-meta">${readyCount} listas · ${failedCount} fallidas · ${progress}% procesado</div>
+          </div>
+        </div>
+        <div class="editor-project-actions">
+          <button class="btn btn-ghost btn-sm" onclick="removeEditorProject('${project.id}')">🗑</button>
+          <button class="btn btn-primary btn-sm" onclick="openEditorProjectConfig('${project.id}')">Configurar</button>
+        </div>
+        <div class="editor-job-status">
+          <strong>${escapeHtml(getEditorCopyLabel(activeCopy))}</strong>
+          <div>${escapeHtml(activeCopy?.status || 'queued')} · ${activeCopy?.progress ? `${Math.round(activeCopy.progress)}%` : '0%'}</div>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+function renderEditorHistory() {
+  const summary = document.getElementById('editor-history-summary');
+  const stats = document.getElementById('editor-history-stats');
+  const tbody = document.getElementById('editor-history-tbody');
+
+  const totals = {
+    queued: 0,
+    processing: 0,
+    ready: 0,
+    failed: 0,
+    total: 0,
+  };
+
+  const rows = state.editorProjects.slice().reverse();
+  state.editorProjects.forEach(project => {
+    project.copies.forEach(copy => {
+      totals.total += 1;
+      totals[copy.status] = (totals[copy.status] || 0) + 1;
+    });
+  });
+
+  if (stats) {
+    stats.innerHTML = `
+      <span class="badge badge-pending">Total ${totals.total}</span>
+      <span class="badge badge-pending">En cola ${totals.queued}</span>
+      <span class="badge badge-pending">Procesando ${totals.processing}</span>
+      <span class="badge badge-active">Listos ${totals.ready}</span>
+      <span class="badge badge-error">Fallidos ${totals.failed}</span>
+    `;
+  }
+
+  if (summary) {
+    summary.innerHTML = `
+      <div class="editor-summary-box"><strong>${totals.queued}</strong><span>En cola</span></div>
+      <div class="editor-summary-box"><strong>${totals.processing}</strong><span>Procesando</span></div>
+      <div class="editor-summary-box"><strong>${totals.ready}</strong><span>Listos</span></div>
+      <div class="editor-summary-box"><strong>${totals.failed}</strong><span>Fallidos</span></div>
+    `;
+  }
+
+  if (!tbody) return;
+
+  if (!rows.length) {
+    tbody.innerHTML = `
+      <tr class="empty-row">
+        <td colspan="6">
+          <div class="empty-state-small">
+            <p>No hay historial de editor todavía.</p>
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('editor-video-input').click()">Subir videos</button>
+          </div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(project => {
+    const counts = project.copies.reduce((acc, copy) => {
+      acc[copy.status] = (acc[copy.status] || 0) + 1;
+      return acc;
+    }, { queued: 0, processing: 0, ready: 0, failed: 0 });
+    const progress = project.copies.length
+      ? Math.round(((counts.ready + counts.failed) / project.copies.length) * 100)
+      : 0;
+    return `
+      <tr>
+        <td style="color:var(--text-1);font-weight:600">${escapeHtml(project.name)}</td>
+        <td>${project.copies.length}</td>
+        <td>
+          <div class="editor-state-list">
+            <span>En cola: ${counts.queued}</span>
+            <span>Procesados: ${counts.processing}</span>
+            <span>Listos: ${counts.ready}</span>
+            <span>Fallidos: ${counts.failed}</span>
+          </div>
+        </td>
+        <td>
+          <div class="editor-progress">
+            <div class="progress-bar"><div class="progress-fill" style="width:${progress}%"></div></div>
+            <div class="editor-progress-label">${progress}%</div>
+          </div>
+        </td>
+        <td>${formatDate(project.updatedAt || project.createdAt)}</td>
+        <td>
+          <div class="editor-history-actions">
+            <button class="btn btn-outline btn-sm" onclick="downloadEditorProjectZip('${project.id}')">ZIP</button>
+            <button class="btn btn-ghost btn-sm" onclick="deleteEditorProject('${project.id}')">🗑</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function updateEditorCounters() {
+  renderEditorVideos();
+  renderEditorHistory();
+}
+
+function handleEditorUpload(event) {
+  const files = Array.from(event.target.files || []).filter(file => file.type.startsWith('video/'));
+  if (!files.length) return;
+
+  files.forEach(file => {
+    const project = createEditorProject(file);
+    state.editorProjects.push(project);
+    void getBrowserVideoMetadata(file).then(meta => {
+      const current = getEditorProject(project.id);
+      if (!current) return;
+      current.duration = meta.duration || current.duration || 0;
+      current.width = meta.width || current.width || 0;
+      current.height = meta.height || current.height || 0;
+      current.copies.forEach(copy => {
+        if (!copy.rangeEnd || copy.rangeEnd === 10) {
+          copy.rangeEnd = Math.max(1, Math.round(current.duration || 10));
+        }
+      });
+      syncEditorProjectMetadata(current);
+      updateEditorCounters();
+      if (state.editorModalProjectId === current.id) {
+        renderEditorProjectModal(current.id);
+      }
+    }).catch(() => {});
+  });
+
+  event.target.value = '';
+  updateEditorCounters();
+}
+
+function removeEditorProject(projectId) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+
+  if (project.previewUrl) URL.revokeObjectURL(project.previewUrl);
+  project.copies.forEach(copy => {
+    if (copy.output?.url) URL.revokeObjectURL(copy.output.url);
+    if (copy.overlayUrl) URL.revokeObjectURL(copy.overlayUrl);
+  });
+  state.editorProjects = state.editorProjects.filter(item => item.id !== projectId);
+
+  if (state.editorModalProjectId === projectId) {
+    closeModal();
+    state.editorModalProjectId = null;
+  }
+
+  updateEditorCounters();
+}
+
+function clearEditorWorkspace() {
+  if (!state.editorProjects.length) {
+    toast('No hay videos para vaciar', 'info');
+    return;
+  }
+
+  if (!confirm('Esto vaciará todos los videos cargados. ¿Continuar?')) return;
+
+  state.editorProjects.forEach(project => {
+    if (project.previewUrl) URL.revokeObjectURL(project.previewUrl);
+    project.copies.forEach(copy => {
+      if (copy.output?.url) URL.revokeObjectURL(copy.output.url);
+      if (copy.overlayUrl) URL.revokeObjectURL(copy.overlayUrl);
+    });
+  });
+
+  state.editorProjects = [];
+  state.editorModalProjectId = null;
+  state.editorModalCopyIndex = 0;
+  state.editorPreviewMode = 'original';
+  closeModal();
+  updateEditorCounters();
+  toast('Editor vaciado', 'success');
+}
+
+function openEditorProjectConfig(projectId) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+  state.editorModalProjectId = projectId;
+  if (state.editorModalCopyIndex >= project.copies.length) {
+    state.editorModalCopyIndex = 0;
+  }
+  const activeCopy = getEditorActiveCopy(project);
+  state.editorPreviewMode = activeCopy?.output ? 'generated' : 'original';
+  renderEditorProjectModal(projectId);
+}
+
+function renderEditorProjectModal(projectId) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+
+  ensureEditorCopyCount(project, project.copies.length || 1);
+  const activeCopy = getEditorActiveCopy(project);
+  const background = getEditorBackgroundOptionById(activeCopy.backgroundId);
+  const font = getEditorFontOptionByFamily(activeCopy.font);
+  const previewSrc = state.editorPreviewMode === 'generated' && activeCopy?.output?.url
+    ? activeCopy.output.url
+    : project.previewUrl;
+  const title = getEditorCopyLabel(activeCopy);
+  const previewChipStyle = activeCopy.showBackground
+    ? `background:linear-gradient(135deg, ${hexToRgba(activeCopy.backgroundColor, Math.max(0, Math.min(100, activeCopy.opacity)) / 100)}, ${background.end});padding:${activeCopy.padding}px;font-size:${activeCopy.size}px;font-family:${activeCopy.font};`
+    : `background:transparent;padding:${activeCopy.padding}px;font-size:${activeCopy.size}px;font-family:${activeCopy.font};`;
+  const tabs = project.copies.map(copy => `
+    <button class="editor-copy-tab ${copy.index - 1 === project.activeCopyIndex ? 'active' : ''}" onclick="selectEditorCopy('${project.id}', ${copy.index - 1})">
+      ${copy.index}. copia${copy.index}
+    </button>
+  `).join('');
+
+  openModal(`Configurar ${project.name}`, `
+    <div class="editor-modal">
+      <div class="editor-modal-preview">
+        <div class="editor-modal-title">${escapeHtml(project.name)}</div>
+        <div class="editor-config-preview">
+          <video id="editor-modal-preview-video" src="${previewSrc}" muted playsinline controls></video>
+        </div>
+        <div class="editor-action-row">
+          <button class="btn btn-outline btn-sm ${state.editorPreviewMode === 'original' ? 'active' : ''}" onclick="setEditorPreviewOriginal('${project.id}')">Preview original</button>
+          <button class="btn btn-outline btn-sm" onclick="copyEditorConfigToAll('${project.id}')">Copiar config actual a todas</button>
+          <button class="btn btn-outline btn-sm" onclick="resetEditorCurrentCopy('${project.id}')">Reset esta copia</button>
+        </div>
+        <div class="editor-control-row">
+          <label for="editor-copy-count">Cantidad de copias</label>
+          <input type="number" id="editor-copy-count" class="form-input editor-input" min="1" max="500" value="${project.copies.length}" onchange="setEditorCopyCount('${project.id}', this.value)" />
+        </div>
+        <div class="editor-copy-tabs">${tabs}</div>
+      </div>
+      <div class="editor-config-area">
+        <div class="editor-control-group">
+          <label>TITULO DE ESTA COPIA</label>
+          <input type="text" id="editor-copy-title" class="form-input editor-input" value="${escapeHtml(activeCopy.title || '')}" placeholder="Ej: 25. copia25 🔥" oninput="updateEditorCopyField('${project.id}', 'title', this.value)" />
+        </div>
+
+        <div class="editor-config-grid">
+          <div class="editor-control-group">
+            <label>Fuentes</label>
+            <select class="form-input editor-select" id="editor-font-select" onchange="updateEditorCopyField('${project.id}', 'font', this.value)">
+              ${EDITOR_FONT_OPTIONS.map(option => `<option value="${escapeHtml(option.family)}" ${option.family === activeCopy.font ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+            </select>
+            <div class="editor-scroll-note">50 fuentes disponibles</div>
+          </div>
+
+          <div class="editor-control-group">
+            <label>Estilos de fondo</label>
+            <select class="form-input editor-select" id="editor-background-select" onchange="updateEditorCopyField('${project.id}', 'backgroundId', this.value)">
+              ${EDITOR_BACKGROUND_OPTIONS.map(option => `<option value="${option.id}" ${option.id === activeCopy.backgroundId ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+            </select>
+            <div class="editor-scroll-note">50 estilos de fondo listos</div>
+          </div>
+        </div>
+
+        <div class="editor-control-group">
+          <label>Combinaciones rápidas</label>
+          <select class="form-input editor-select" id="editor-quick-combo" onchange="applyEditorQuickCombo('${project.id}', this.value)">
+            <option value="">Elegir combinación</option>
+            ${EDITOR_QUICK_COMBOS.map(option => `<option value="${option.id}">${escapeHtml(option.label)}</option>`).join('')}
+          </select>
+        </div>
+
+        <div class="editor-control-group">
+          <label>Color rápido del fondo</label>
+          <div class="editor-bg-swatch">
+            ${EDITOR_COLOR_OPTIONS.map(option => `
+              <button type="button" class="editor-swatch-btn ${activeCopy.backgroundColor === option.value ? 'active' : ''}" style="background:${option.value}; color:${isLightColor(option.value) ? '#111827' : '#ffffff'}" onclick="updateEditorCopyField('${project.id}', 'backgroundColor', '${option.value}')">
+                ${escapeHtml(option.label)}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="editor-control-group">
+          <label>¿Mostrar fondo?</label>
+          <div class="editor-switch-row">
+            <button type="button" class="btn btn-outline btn-sm ${activeCopy.showBackground ? 'active' : ''}" onclick="updateEditorCopyField('${project.id}', 'showBackground', true)">Mostrar</button>
+            <button type="button" class="btn btn-outline btn-sm ${!activeCopy.showBackground ? 'active' : ''}" onclick="updateEditorCopyField('${project.id}', 'showBackground', false)">No mostrar</button>
+          </div>
+        </div>
+
+        <div class="editor-control-group">
+          <div class="editor-control-row">
+            <label for="editor-size-range">Tamaño</label>
+            <input type="range" id="editor-size-range" min="24" max="100" step="1" value="${Number(activeCopy.size || 54)}" oninput="updateEditorCopyField('${project.id}', 'size', this.value)" />
+            <div class="range-meta"><span>Min</span><span>${Number(activeCopy.size || 54)} px</span><span>Max</span></div>
+          </div>
+        </div>
+
+        <div class="editor-control-group">
+          <div class="editor-control-row">
+            <label for="editor-opacity-range">Opacidad de fondo</label>
+            <input type="range" id="editor-opacity-range" min="0" max="100" step="1" value="${Number(activeCopy.opacity || 88)}" oninput="updateEditorCopyField('${project.id}', 'opacity', this.value)" />
+            <div class="range-meta"><span>Invisible</span><span>${Number(activeCopy.opacity || 88)}%</span><span>Visible</span></div>
+          </div>
+        </div>
+
+        <div class="editor-control-group">
+          <div class="editor-control-row">
+            <label for="editor-padding-range">Padding de fondo</label>
+            <input type="range" id="editor-padding-range" min="6" max="42" step="1" value="${Number(activeCopy.padding || 18)}" oninput="updateEditorCopyField('${project.id}', 'padding', this.value)" />
+            <div class="range-meta"><span>Min</span><span>${Number(activeCopy.padding || 18)} px</span><span>Max</span></div>
+          </div>
+        </div>
+
+        <div class="editor-control-group">
+          <label>Duración del video</label>
+          <div class="editor-switch-row">
+            <button type="button" class="btn btn-outline btn-sm ${activeCopy.durationMode === 'all' ? 'active' : ''}" onclick="updateEditorCopyField('${project.id}', 'durationMode', 'all')">Todo el video</button>
+            <button type="button" class="btn btn-outline btn-sm ${activeCopy.durationMode === 'range' ? 'active' : ''}" onclick="updateEditorCopyField('${project.id}', 'durationMode', 'range')">Rango</button>
+          </div>
+          <div class="editor-control-row">
+            <label for="editor-range-end">Hasta</label>
+            <input type="range" id="editor-range-end" min="1" max="${Math.max(1, Math.round(project.duration || 30))}" step="1" value="${Math.max(1, Math.min(Math.round(project.duration || 30), Number(activeCopy.rangeEnd || 10)))}" oninput="updateEditorCopyField('${project.id}', 'rangeEnd', this.value)" />
+            <div class="range-meta"><span>0s</span><span>${Math.max(1, Math.min(Math.round(project.duration || 30), Number(activeCopy.rangeEnd || 10)))}s</span><span>${Math.round(project.duration || 30)}s</span></div>
+          </div>
+        </div>
+
+        <div class="editor-control-group">
+          <label>Vista previa de estilo</label>
+          <div class="editor-title-preview ${activeCopy.showBackground ? '' : 'hidden-bg'}" id="editor-title-preview" style="${previewChipStyle}">
+            <span style="color:${activeCopy.showBackground && isLightColor(activeCopy.backgroundColor) ? '#111827' : '#ffffff'}">${escapeHtml(title || 'TITULO DE ESTA COPIA')}</span>
+          </div>
+          <div class="editor-scroll-note">Fuente: ${escapeHtml(font.label)} · Fondo: ${escapeHtml(background.label)}</div>
+        </div>
+
+        <button class="btn btn-primary btn-lg btn-full" onclick="saveEditorProjectAndClose('${project.id}')">Guardar y volver</button>
+      </div>
+    </div>
+  `);
+}
+
+function isLightColor(color) {
+  const value = String(color || '').replace('#', '');
+  if (value.length !== 6) return false;
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness >= 150;
+}
+
+function hexToRgba(color, alpha = 1) {
+  const value = String(color || '').replace('#', '');
+  if (value.length !== 6) return `rgba(17, 24, 39, ${alpha})`;
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function updateEditorPreviewChip(projectId) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+  const copy = getEditorActiveCopy(project);
+  if (!copy) return;
+  const chip = document.getElementById('editor-title-preview');
+  const title = chip?.querySelector('span');
+  if (chip) {
+    const bg = getEditorBackgroundOptionById(copy.backgroundId);
+    chip.classList.toggle('hidden-bg', !copy.showBackground);
+    chip.style.padding = `${Number(copy.padding || 18)}px`;
+    chip.style.fontSize = `${Number(copy.size || 54)}px`;
+    chip.style.fontFamily = copy.font;
+    chip.style.background = copy.showBackground
+      ? `linear-gradient(135deg, ${hexToRgba(copy.backgroundColor, Math.max(0, Math.min(100, Number(copy.opacity || 88))) / 100)}, ${bg.end})`
+      : 'transparent';
+    if (title) {
+      title.style.color = copy.showBackground && isLightColor(copy.backgroundColor) ? '#111827' : '#ffffff';
+      title.textContent = getEditorCopyLabel(copy);
+    }
+  }
+  const previewVideo = document.getElementById('editor-modal-preview-video');
+  if (previewVideo) {
+    previewVideo.src = state.editorPreviewMode === 'generated' && copy.output?.url ? copy.output.url : project.previewUrl;
+  }
+}
+
+function selectEditorCopy(projectId, copyIndex) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+  project.activeCopyIndex = Math.max(0, Math.min(project.copies.length - 1, Number(copyIndex) || 0));
+  state.editorModalCopyIndex = project.activeCopyIndex;
+  const copy = getEditorActiveCopy(project);
+  state.editorPreviewMode = copy?.output?.url ? 'generated' : 'original';
+  renderEditorProjectModal(projectId);
+}
+
+function setEditorCopyCount(projectId, value) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+  ensureEditorCopyCount(project, value);
+  syncEditorProjectMetadata(project);
+  state.editorModalCopyIndex = project.activeCopyIndex;
+  renderEditorProjectModal(projectId);
+  updateEditorCounters();
+}
+
+function updateEditorCopyField(projectId, field, value) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+  const copy = getEditorActiveCopy(project);
+  if (!copy) return;
+
+  let nextValue = value;
+  if (['size', 'opacity', 'padding', 'rangeEnd'].includes(field)) {
+    nextValue = Number(value);
+  }
+  if (field === 'showBackground') {
+    nextValue = value === true || value === 'true';
+  }
+  copy[field] = nextValue;
+  syncEditorProjectMetadata(project);
+  updateEditorPreviewChip(projectId);
+  updateEditorCounters();
+
+  if (field === 'title') return;
+  if (['size', 'opacity', 'padding', 'rangeEnd'].includes(field)) {
+    const ranges = {
+      size: 'editor-size-range',
+      opacity: 'editor-opacity-range',
+      padding: 'editor-padding-range',
+      rangeEnd: 'editor-range-end',
+    };
+    const input = document.getElementById(ranges[field]);
+    if (input) input.value = String(nextValue);
+    const meta = input?.parentElement?.querySelector('.range-meta');
+    if (meta) {
+      const middle = meta.children?.[1];
+      if (middle) {
+        middle.textContent = field === 'opacity'
+          ? `${Math.round(nextValue)}%`
+          : field === 'size'
+            ? `${Math.round(nextValue)} px`
+            : `${Math.round(nextValue)}s`;
+      }
+    }
+    return;
+  }
+
+  renderEditorProjectModal(projectId);
+}
+
+function applyEditorQuickCombo(projectId, comboId) {
+  if (!comboId) return;
+  const project = getEditorProject(projectId);
+  if (!project) return;
+  const copy = getEditorActiveCopy(project);
+  const combo = EDITOR_QUICK_COMBOS.find(item => item.id === comboId);
+  if (!copy || !combo) return;
+  const comboIndex = Math.max(0, EDITOR_QUICK_COMBOS.findIndex(item => item.id === comboId));
+  copy.font = combo.font;
+  copy.backgroundColor = combo.backgroundColor || copy.backgroundColor;
+  copy.backgroundId = EDITOR_BACKGROUND_OPTIONS[comboIndex % EDITOR_BACKGROUND_OPTIONS.length].id;
+  copy.showBackground = true;
+  copy.opacity = 92;
+  copy.padding = 20;
+  updateEditorPreviewChip(projectId);
+  renderEditorProjectModal(projectId);
+}
+
+function copyEditorConfigToAll(projectId) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+  const copy = getEditorActiveCopy(project);
+  if (!copy) return;
+
+  project.copies = project.copies.map(item => ({
+    ...item,
+    font: copy.font,
+    backgroundId: copy.backgroundId,
+    backgroundColor: copy.backgroundColor,
+    showBackground: copy.showBackground,
+    size: copy.size,
+    opacity: copy.opacity,
+    padding: copy.padding,
+    durationMode: copy.durationMode,
+    rangeEnd: copy.rangeEnd,
+  }));
+
+  syncEditorProjectMetadata(project);
+  renderEditorProjectModal(projectId);
+  updateEditorCounters();
+  toast('Configuración copiada a todas las variantes', 'success');
+}
+
+function resetEditorCurrentCopy(projectId) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+  const copy = getEditorActiveCopy(project);
+  if (!copy) return;
+  const index = copy.index;
+  project.copies[project.activeCopyIndex] = {
+    ...createEditorCopy(project, index),
+    index,
+    id: copy.id,
+    title: '',
+  };
+  syncEditorProjectMetadata(project);
+  renderEditorProjectModal(projectId);
+  updateEditorCounters();
+}
+
+function setEditorPreviewOriginal(projectId) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+  state.editorPreviewMode = 'original';
+  project.previewMode = 'original';
+  updateEditorPreviewChip(projectId);
+}
+
+function saveEditorProjectAndClose(projectId) {
+  const project = getEditorProject(projectId);
+  if (project) {
+    syncEditorProjectMetadata(project);
+    updateEditorCounters();
+  }
+  state.editorModalProjectId = null;
+  closeModal();
+  toast('Configuración guardada', 'success');
+}
+
+function deleteEditorProject(projectId) {
+  removeEditorProject(projectId);
+}
+
+function downloadEditorProjectZip(projectId) {
+  const project = getEditorProject(projectId);
+  if (!project) return;
+  const files = project.copies.filter(copy => copy.status === 'ready' && copy.output?.blob).map(copy => ({
+    name: copy.output.file.name,
+    blob: copy.output.blob,
+  }));
+  if (!files.length) {
+    toast('Todavía no hay copias listas para zip', 'error');
+    return;
+  }
+
+  buildZipBlob(files).then(zipBlob => {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(zipBlob);
+    link.download = `${safeFilePart(project.name)}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+  }).catch(error => {
+    toast(getErrorMessage(error, 'No se pudo crear el zip'), 'error');
+  });
+}
+
+function clearEditorQueueState(project) {
+  project.copies.forEach(copy => {
+    if (copy.output?.url) URL.revokeObjectURL(copy.output.url);
+    copy.output = null;
+    copy.hash = null;
+    copy.audioSignature = null;
+    copy.status = 'queued';
+    copy.progress = 0;
+    copy.attempts = 0;
+  });
+}
+
+function getEditorHistoryTotals() {
+  const totals = { queued: 0, processing: 0, ready: 0, failed: 0, total: 0 };
+  state.editorProjects.forEach(project => {
+    project.copies.forEach(copy => {
+      totals.total += 1;
+      totals[copy.status] = (totals[copy.status] || 0) + 1;
+    });
+  });
+  return totals;
+}
+
+function refreshEditorUi() {
+  renderEditorVideos();
+  renderEditorHistory();
+}
+
+async function getBrowserVideoMetadata(file) {
+  return new Promise(resolve => {
+    if (!file) {
+      resolve({ duration: 0, width: 0, height: 0 });
+      return;
+    }
+
+    const video = document.createElement('video');
+    const url = URL.createObjectURL(file);
+    let settled = false;
+
+    const done = data => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      resolve(data);
+    };
+
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => done({
+      duration: Number.isFinite(video.duration) ? video.duration : 0,
+      width: Number.isFinite(video.videoWidth) ? video.videoWidth : 0,
+      height: Number.isFinite(video.videoHeight) ? video.videoHeight : 0,
+    });
+    video.onerror = () => done({ duration: 0, width: 0, height: 0 });
+    setTimeout(() => done({ duration: 0, width: 0, height: 0 }), 2500);
+    video.src = url;
+  });
+}
+
+function loadVideoFrame(file, time = 0.5) {
+  return new Promise(async (resolve, reject) => {
+    const video = document.createElement('video');
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const url = URL.createObjectURL(file);
+
+    const cleanup = () => URL.revokeObjectURL(url);
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
+    video.src = url;
+
+    try {
+      await waitForVideoEvent(video, 'loadedmetadata');
+      const target = Math.max(0, Math.min(time, Math.max(0, (video.duration || 0) - 0.05)));
+      await setVideoTime(video, target);
+      const width = 32;
+      const height = 32;
+      canvas.width = width;
+      canvas.height = height;
+      ctx.drawImage(video, 0, 0, width, height);
+      const image = ctx.getImageData(0, 0, width, height);
+      cleanup();
+      resolve(image);
+    } catch (error) {
+      cleanup();
+      reject(error);
+    }
+  });
+}
+
+function computePhashFromImageData(imageData) {
+  const size = 16;
+  const small = 8;
+  const grayscale = new Array(size * size).fill(0);
+  const data = imageData.data;
+  const sampleSize = Math.max(1, Math.floor(32 / size));
+
+  for (let y = 0; y < size; y += 1) {
+    for (let x = 0; x < size; x += 1) {
+      let sum = 0;
+      let count = 0;
+      for (let yy = 0; yy < sampleSize; yy += 1) {
+        for (let xx = 0; xx < sampleSize; xx += 1) {
+          const px = Math.min(31, x * sampleSize + xx);
+          const py = Math.min(31, y * sampleSize + yy);
+          const index = (py * 32 + px) * 4;
+          const r = data[index];
+          const g = data[index + 1];
+          const b = data[index + 2];
+          sum += (0.299 * r + 0.587 * g + 0.114 * b);
+          count += 1;
+        }
+      }
+      grayscale[y * size + x] = sum / Math.max(1, count);
+    }
+  }
+
+  const coeffs = [];
+  for (let u = 0; u < size; u += 1) {
+    for (let v = 0; v < size; v += 1) {
+      let total = 0;
+      for (let x = 0; x < size; x += 1) {
+        for (let y = 0; y < size; y += 1) {
+          total += grayscale[y * size + x]
+            * Math.cos(((2 * x + 1) * u * Math.PI) / (2 * size))
+            * Math.cos(((2 * y + 1) * v * Math.PI) / (2 * size));
+        }
+      }
+      const cu = u === 0 ? Math.SQRT1_2 : 1;
+      const cv = v === 0 ? Math.SQRT1_2 : 1;
+      coeffs.push((2 / size) * cu * cv * total);
+    }
+  }
+
+  const low = [];
+  for (let u = 0; u < small; u += 1) {
+    for (let v = 0; v < small; v += 1) {
+      if (u === 0 && v === 0) continue;
+      low.push(coeffs[u * size + v]);
+    }
+  }
+
+  const sorted = [...low].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] || 0;
+  return low.map(value => (value > median ? 1 : 0));
+}
+
+function hammingDistance(a, b) {
+  const length = Math.min(a.length, b.length);
+  let distance = 0;
+  for (let index = 0; index < length; index += 1) {
+    if (a[index] !== b[index]) distance += 1;
+  }
+  return distance + Math.abs(a.length - b.length);
+}
+
+async function computeAudioSignature(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return [];
+  const context = new AudioCtx();
+  try {
+    const buffer = await context.decodeAudioData(arrayBuffer.slice(0));
+    const channel = buffer.getChannelData(0);
+    const bands = 64;
+    const step = Math.max(1, Math.floor(channel.length / bands));
+    const signature = [];
+    for (let i = 0; i < bands; i += 1) {
+      let sum = 0;
+      let count = 0;
+      for (let j = 0; j < step; j += 1) {
+        const sample = channel[i * step + j] || 0;
+        sum += Math.abs(sample);
+        count += 1;
+      }
+      signature.push(sum / Math.max(1, count));
+    }
+    return signature;
+  } finally {
+    context.close().catch(() => {});
+  }
+}
+
+function cosineSimilarity(a, b) {
+  const length = Math.min(a.length, b.length);
+  let dot = 0;
+  let magA = 0;
+  let magB = 0;
+  for (let index = 0; index < length; index += 1) {
+    dot += a[index] * b[index];
+    magA += a[index] * a[index];
+    magB += b[index] * b[index];
+  }
+  if (!magA || !magB) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
+function hashStringToSeed(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function mulberry32(seed) {
+  let t = seed >>> 0;
+  return () => {
+    t += 0x6D2B79F5;
+    let x = t;
+    x = Math.imul(x ^ (x >>> 15), x | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function createVariantPlan(project, copy, attempt = 0) {
+  const seed = hashStringToSeed(`${project.id}:${copy.index}:${attempt}`);
+  const rand = mulberry32(seed);
+  const speed = 1 + rand() * 0.03;
+  const zoom = 1 + rand() * 0.02;
+  const crop = 0.97 + rand() * 0.03;
+  const delayMs = 80 + Math.round(rand() * 70);
+  const brightness = -0.02 + rand() * 0.02;
+  const gamma = 0.98 + rand() * 0.02;
+  const targetEnd = copy.durationMode === 'range'
+    ? Math.max(1, Math.min(Math.round(project.duration || 30), Math.round(copy.rangeEnd || 10)))
+    : Math.max(1, Math.round(project.duration || 30));
+
+  return {
+    seed,
+    speed: Number(speed.toFixed(4)),
+    zoom: Number(zoom.toFixed(4)),
+    crop: Number(crop.toFixed(4)),
+    delayMs,
+    brightness: Number(brightness.toFixed(4)),
+    gamma: Number(gamma.toFixed(4)),
+    targetEnd,
+  };
+}
+
+function applyVariantFilterToSize(width, height, plan) {
+  const zoomW = Math.max(2, Math.round(width * plan.zoom));
+  const zoomH = Math.max(2, Math.round(height * plan.zoom));
+  const cropW = Math.max(2, Math.round(width * plan.crop));
+  const cropH = Math.max(2, Math.round(height * plan.crop));
+  return {
+    zoomW: zoomW % 2 === 0 ? zoomW : zoomW + 1,
+    zoomH: zoomH % 2 === 0 ? zoomH : zoomH + 1,
+    cropW: cropW % 2 === 0 ? cropW : cropW + 1,
+    cropH: cropH % 2 === 0 ? cropH : cropH + 1,
+  };
+}
+
+function getEditorFilterGraph(width, height, plan, copy, hasAudio) {
+  const sizes = applyVariantFilterToSize(width, height, plan);
+  const videoChain = [
+    `tpad=start_duration=${(plan.delayMs / 1000).toFixed(3)}:start_mode=clone`,
+    `scale=${sizes.zoomW}:${sizes.zoomH}`,
+    `crop=${sizes.cropW}:${sizes.cropH}:(in_w-out_w)/2:(in_h-out_h)/2`,
+    `scale=${width}:${height}`,
+    `eq=brightness=${plan.brightness}:gamma=${plan.gamma}`,
+    `setpts=PTS/${plan.speed}`,
+  ].join(',');
+  const overlayY = Math.max(24, Math.round(height * 0.70));
+  const output = `[vbase][voverlay]overlay=x=(W-w)/2:y=${overlayY}-h/2:enable='between(t,0,${plan.targetEnd})'[vout]`;
+  if (!hasAudio) {
+    return {
+      filterGraph: `[0:v]${videoChain}[vbase]`,
+      outputLabel: 'vout',
+      hasAudio: false,
+      overlayFilter: output,
+    };
+  }
+
+  const audioChain = [
+    `adelay=${plan.delayMs}|${plan.delayMs}`,
+    `atempo=${plan.speed}`,
+    `atrim=0:${plan.targetEnd}`,
+  ].join(',');
+  return {
+    filterGraph: `[0:v]${videoChain}[vbase];[1:v]format=rgba[voverlay];[0:a]${audioChain}[aout];${output}`,
+    outputLabel: 'vout',
+    hasAudio: true,
+    overlayFilter: output,
+  };
+}
+
+function parseEditorFilterCommand(inputName, overlayFileName, outputName, width, height, plan, hasAudio) {
+  const sizes = applyVariantFilterToSize(width, height, plan);
+  const videoChain = [
+    `tpad=start_duration=${(plan.delayMs / 1000).toFixed(3)}:start_mode=clone`,
+    `scale=${sizes.zoomW}:${sizes.zoomH}`,
+    `crop=${sizes.cropW}:${sizes.cropH}:(in_w-out_w)/2:(in_h-out_h)/2`,
+    `scale=${width}:${height}`,
+    `eq=brightness=${plan.brightness}:gamma=${plan.gamma}`,
+    `setpts=PTS/${plan.speed}`,
+  ].join(',');
+  const overlayY = Math.max(24, Math.round(height * 0.70));
+  const base = hasAudio
+    ? `[0:v]${videoChain}[vbase];[1:v]format=rgba[voverlay];[0:a]adelay=${plan.delayMs}|${plan.delayMs},atempo=${plan.speed}[aout];[vbase][voverlay]overlay=x=(W-w)/2:y=${overlayY}-h/2:enable='between(t,0,${plan.targetEnd})'[vout]`
+    : `[0:v]${videoChain}[vbase];[1:v]format=rgba[voverlay];[vbase][voverlay]overlay=x=(W-w)/2:y=${overlayY}-h/2:enable='between(t,0,${plan.targetEnd})'[vout]`;
+  const args = [
+    '-i', inputName,
+    '-loop', '1', '-i', overlayFileName,
+    '-filter_complex', base,
+    '-map', '[vout]',
+  ];
+
+  if (hasAudio) {
+    args.push('-map', '[aout]', '-c:a', 'aac', '-b:a', '128k');
+  } else {
+    args.push('-an');
+  }
+
+  args.push('-shortest', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-pix_fmt', 'yuv420p', '-movflags', 'faststart', outputName);
+  return args;
+}
+
+async function createEditorTitleOverlay(project, copy, width, height) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const label = getEditorCopyLabel(copy);
+  const fontSize = Math.max(24, Math.min(100, Number(copy.size || 54)));
+  const padding = Math.max(6, Math.min(42, Number(copy.padding || 18)));
+  const fontOption = getEditorFontOptionByFamily(copy.font);
+  const bgOption = getEditorBackgroundOptionById(copy.backgroundId);
+  const maxWidth = Math.max(160, Math.round((width || 1080) * 0.72));
+  const titleColor = copy.showBackground && isLightColor(copy.backgroundColor) ? '#111827' : '#ffffff';
+
+  canvas.width = maxWidth;
+  canvas.height = 400;
+  ctx.font = `700 ${fontSize}px ${fontOption.family}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const words = label.split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  words.forEach(word => {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth - padding * 2 && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  });
+  if (line) lines.push(line);
+  const lineHeight = Math.round(fontSize * 1.18);
+  const boxHeight = lines.length * lineHeight + padding * 2;
+  const boxWidth = Math.min(maxWidth, Math.max(...lines.map(text => ctx.measureText(text).width)) + padding * 2);
+  canvas.width = Math.ceil(boxWidth);
+  canvas.height = Math.ceil(boxHeight);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (copy.showBackground) {
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+    gradient.addColorStop(0, copy.backgroundColor);
+    gradient.addColorStop(1, bgOption.end);
+    ctx.fillStyle = gradient;
+    ctx.globalAlpha = Math.max(0, Math.min(100, Number(copy.opacity || 88))) / 100;
+    roundRect(ctx, 0, 0, canvas.width, canvas.height, Math.min(24, padding + 4));
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.fillStyle = titleColor;
+  ctx.shadowColor = 'rgba(0,0,0,0.35)';
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetY = 2;
+  ctx.font = `700 ${fontSize}px ${fontOption.family}`;
+  lines.forEach((text, index) => {
+    const y = padding + (lineHeight / 2) + (index * lineHeight);
+    ctx.fillText(text, canvas.width / 2, y);
+  });
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+
+  return new Promise(resolve => {
+    canvas.toBlob(blob => {
+      if (!blob) {
+        resolve(null);
+        return;
+      }
+      const overlayUrl = URL.createObjectURL(blob);
+      resolve({ blob, overlayUrl });
+    }, 'image/png');
+  });
+}
+
+function roundRect(ctx, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
+  ctx.closePath();
+}
+
+async function buildEditorTitleOverlay(project, copy, width, height) {
+  const overlay = await createEditorTitleOverlay(project, copy, width, height);
+  if (!overlay) {
+    throw new Error('No se pudo crear la vista previa del titulo.');
+  }
+  return overlay;
+}
+
+function estimateSimilarity(signature, previousCopies) {
+  for (const previous of previousCopies) {
+    if (!previous?.hash || !previous?.audioSignature) continue;
+    const distance = hammingDistance(signature.hash, previous.hash);
+    const audioSimilarity = cosineSimilarity(signature.audioSignature, previous.audioSignature);
+    if (distance < 10 || audioSimilarity > 0.7) {
+      return false;
+    }
+  }
+  return true;
+}
+
+async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, width, height, hasAudio, previousAccepted) {
+  const maxAttempts = 4;
+  let lastError = null;
+  const outputName = `variant_${String(copy.index).padStart(3, '0')}.mp4`;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const plan = createVariantPlan(project, copy, attempt);
+    const overlay = await buildEditorTitleOverlay(project, copy, width, height);
+    const overlayName = `overlay.png`;
+
+    try {
+      copy.status = 'processing';
+      copy.progress = 15;
+      syncEditorProjectMetadata(project);
+      refreshEditorUi();
+
+      await ffmpegRuntime.instance.writeFile(overlayName, await ffmpegRuntime.fetchFile(new File([overlay.blob], 'overlay.png', { type: 'image/png' })));
+
+      const args = parseEditorFilterCommand(inputName, overlayName, outputName, width, height, plan, hasAudio);
+
+      await execFFmpegChecked(ffmpegRuntime.instance, args);
+      const data = await ffmpegRuntime.instance.readFile(outputName);
+      const blob = new Blob([data], { type: 'video/mp4' });
+      const file = new File([blob], outputName, { type: 'video/mp4' });
+      const frame = await loadVideoFrame(file, 0.45).catch(() => null);
+      const hash = frame ? computePhashFromImageData(frame) : [];
+      const audioSignature = hasAudio ? await computeAudioSignature(file).catch(() => []) : [];
+      const signature = { hash, audioSignature };
+
+      if (!estimateSimilarity(signature, previousAccepted)) {
+        lastError = new Error('La variante resultó demasiado parecida. Reintentando con otro seed.');
+        await ffmpegRuntime.instance.deleteFile(overlayName).catch(() => {});
+        await ffmpegRuntime.instance.deleteFile(outputName).catch(() => {});
+        if (overlay.overlayUrl) URL.revokeObjectURL(overlay.overlayUrl);
+        continue;
+      }
+
+      if (overlay.overlayUrl) URL.revokeObjectURL(overlay.overlayUrl);
+
+      await ffmpegRuntime.instance.deleteFile(inputName).catch(() => {});
+      await ffmpegRuntime.instance.deleteFile(overlayName).catch(() => {});
+      await ffmpegRuntime.instance.deleteFile(outputName).catch(() => {});
+
+      copy.status = 'ready';
+      copy.progress = 100;
+      copy.attempts = attempt + 1;
+      copy.output = {
+        blob,
+        file,
+        url: URL.createObjectURL(blob),
+      };
+      copy.hash = hash;
+      copy.audioSignature = audioSignature;
+      syncEditorProjectMetadata(project);
+      return copy.output;
+    } catch (error) {
+      lastError = error;
+      copy.status = 'processing';
+      copy.progress = Math.max(copy.progress, 25);
+      await ffmpegRuntime.instance.deleteFile(overlayName).catch(() => {});
+      await ffmpegRuntime.instance.deleteFile(outputName).catch(() => {});
+      if (overlay?.overlayUrl) URL.revokeObjectURL(overlay.overlayUrl);
+    }
+  }
+
+  copy.status = 'failed';
+  copy.progress = 0;
+  copy.attempts = maxAttempts;
+  syncEditorProjectMetadata(project);
+  throw lastError || new Error('No se pudo generar la variante.');
+}
+
+async function generateAllEditorVideos() {
+  if (!state.editorProjects.length) {
+    toast('Subí uno o más videos primero', 'error');
+    return;
+  }
+  if (state.editorQueueRunning) return;
+
+  const button = document.getElementById('editor-generate-all-btn');
+  state.editorQueueRunning = true;
+  if (button) {
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner"></span> Generando...';
+  }
+
+  try {
+      const runtime = await loadFFmpeg(document.getElementById('editor-generate-status') || document.body);
+    for (const project of state.editorProjects) {
+      const inputName = 'input.mp4';
+      try {
+        ensureEditorCopyCount(project, project.copies.length || 1);
+        const metadata = project.duration && project.width && project.height
+          ? { duration: project.duration, width: project.width, height: project.height }
+          : await getBrowserVideoMetadata(project.file);
+        project.duration = metadata.duration || project.duration || 1;
+        project.width = metadata.width || project.width || 1080;
+        project.height = metadata.height || project.height || 1920;
+        await runtime.instance.writeFile(inputName, await runtime.fetchFile(project.file));
+        const hasAudio = await probeHasAudio(runtime.instance, inputName, `probe-${project.id}.txt`).catch(() => true);
+        const previousAccepted = [];
+        clearEditorQueueState(project);
+        syncEditorProjectMetadata(project);
+        refreshEditorUi();
+        state.ffmpeg.activeStatusId = 'editor-generate-status';
+
+        for (const copy of project.copies) {
+          try {
+            copy.status = 'queued';
+            copy.progress = 10;
+            refreshEditorUi();
+            const statusNote = document.getElementById('editor-generate-status');
+            if (statusNote) statusNote.textContent = `Procesando ${project.name} · copia ${copy.index} de ${project.copies.length}...`;
+            const output = await renderEditorProjectCopy(project, copy, runtime, inputName, project.width, project.height, hasAudio, previousAccepted);
+            previousAccepted.push({
+              hash: copy.hash,
+              audioSignature: copy.audioSignature,
+              output,
+            });
+          } catch (error) {
+            copy.status = 'failed';
+            copy.progress = 0;
+            copy.error = getErrorMessage(error, 'No se pudo procesar esta copia.');
+            syncEditorProjectMetadata(project);
+          }
+          refreshEditorUi();
+        }
+      } finally {
+        await runtime.instance.deleteFile(inputName).catch(() => {});
+      }
+    }
+
+    toast('Generación finalizada', 'success');
+  } catch (error) {
+    toast(getErrorMessage(error, 'No se pudo ejecutar la cola de generación.'), 'error');
+  } finally {
+    state.editorQueueRunning = false;
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Generar todo';
+    }
+    refreshEditorUi();
+  }
+}
+
+function removeEditorProjectOutput(copy) {
+  if (copy.output?.url) URL.revokeObjectURL(copy.output.url);
+  copy.output = null;
+  copy.hash = null;
+  copy.audioSignature = null;
+}
+
+async function buildZipBlob(files) {
+  const encoder = new TextEncoder();
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const data = new Uint8Array(await file.blob.arrayBuffer());
+    const nameBytes = encoder.encode(file.name);
+    const crc = crc32(data);
+    const localHeader = new ArrayBuffer(30);
+    const localView = new DataView(localHeader);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0, true);
+    localView.setUint16(8, 0, true);
+    localView.setUint16(10, 0, true);
+    localView.setUint16(12, 0, true);
+    localView.setUint32(14, crc, true);
+    localView.setUint32(18, data.length, true);
+    localView.setUint32(22, data.length, true);
+    localView.setUint16(26, nameBytes.length, true);
+    localView.setUint16(28, 0, true);
+    localParts.push(new Uint8Array(localHeader), nameBytes, data);
+
+    const centralHeader = new ArrayBuffer(46);
+    const centralView = new DataView(centralHeader);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0, true);
+    centralView.setUint16(10, 0, true);
+    centralView.setUint16(12, 0, true);
+    centralView.setUint16(14, 0, true);
+    centralView.setUint32(16, crc, true);
+    centralView.setUint32(20, data.length, true);
+    centralView.setUint32(24, data.length, true);
+    centralView.setUint16(28, nameBytes.length, true);
+    centralView.setUint16(30, 0, true);
+    centralView.setUint16(32, 0, true);
+    centralView.setUint16(34, 0, true);
+    centralView.setUint16(36, 0, true);
+    centralView.setUint32(38, 0, true);
+    centralView.setUint32(42, offset, true);
+    centralParts.push(new Uint8Array(centralHeader), nameBytes);
+
+    offset += 30 + nameBytes.length + data.length;
+  }
+
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const centralOffset = localParts.reduce((sum, part) => sum + part.length, 0);
+  const endRecord = new ArrayBuffer(22);
+  const endView = new DataView(endRecord);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(4, 0, true);
+  endView.setUint16(6, 0, true);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, centralOffset, true);
+  endView.setUint16(20, 0, true);
+
+  return new Blob([...localParts, ...centralParts, new Uint8Array(endRecord)], { type: 'application/zip' });
+}
+
+function crc32(bytes) {
+  const table = crc32.table || (crc32.table = Array.from({ length: 256 }, (_, index) => {
+    let c = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    }
+    return c >>> 0;
+  }));
+  let crc = 0 ^ -1;
+  for (let index = 0; index < bytes.length; index += 1) {
+    crc = (crc >>> 8) ^ table[(crc ^ bytes[index]) & 0xFF];
+  }
+  return (crc ^ -1) >>> 0;
+}
+
+// ═══════════════════════════════════════════════════════════
 //  AI VIDEO CREATOR
 // ═══════════════════════════════════════════════════════════
 function handleAiPhotoUpload(event) {
@@ -3172,7 +4659,7 @@ function setupInstagramOAuthFields() {
 function init() {
   syncGeminiGlobals();
   setupInstagramOAuthFields();
-  setupAiVideoCreatorEvents();
+  if (typeof setupAiVideoCreatorEvents === 'function') setupAiVideoCreatorEvents();
 
   state.accounts = state.accounts.filter(account => account.platform === 'ig');
   state.history = state.history.filter(item => ['ig', 'ai'].includes(item.platform));
@@ -3182,6 +4669,8 @@ function init() {
 
   // Restore accounts
   renderIGAccounts();
+  renderEditorVideos();
+  renderEditorHistory();
 
   // Initial page
   navigateTo('dashboard');

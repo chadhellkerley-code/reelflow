@@ -370,142 +370,70 @@
         <section class="page" id="page-editor">
           <div class="page-header">
             <div>
-              <h1 class="page-title">Editor de Videos</h1>
-              <p class="page-subtitle">Subí tu video crudo, elegí formatos de Instagram y generá videos editados con overlays, textos, transiciones y audio.</p>
+              <h1 class="page-title">Editor de Variantes</h1>
+              <p class="page-subtitle">Subí uno o varios videos, configurá copias por lote y generá variantes con historial y ZIP por video.</p>
             </div>
           </div>
 
-          <div class="editor-layout">
-            <div class="editor-step" id="editor-step-1">
-              <div class="step-header">
-                <div class="step-number">01</div>
-                <div>
-                  <h3>Subir mi video</h3>
-                  <p>Este es el video crudo que ReelFlow va a cortar y estilizar.</p>
-                </div>
+          <div class="editor-shell">
+            <div class="editor-toolbar">
+              <div class="editor-toolbar-copy">Videos cargados y configuración por lote</div>
+              <div class="editor-toolbar-actions">
+                <button class="btn btn-primary btn-sm" id="editor-generate-all-btn" onclick="generateAllEditorVideos()">Generar todo</button>
+                <button class="btn btn-outline btn-sm" onclick="clearEditorWorkspace()">Vaciar</button>
               </div>
+              <div class="editor-scroll-note" id="editor-generate-status"></div>
+            </div>
+
+            <div class="editor-upload-panel">
               <div class="upload-zone upload-zone-editor" id="editor-upload-zone" onclick="document.getElementById('editor-video-input').click()">
-                <div class="upload-icon">◧</div>
+                <div class="upload-icon">▣</div>
                 <div class="upload-text">
-                  <strong>Arrastrá tu video aquí</strong>
-                  <span>o hacé clic para seleccionar</span>
-                  <span class="upload-hint">MP4, MOV o WEBM</span>
+                  <strong>Arrastrá uno o más videos aquí</strong>
+                  <span>o hacé clic para seleccionar varios archivos</span>
+                  <span class="upload-hint">MP4, MOV, M4V o WEBM</span>
                 </div>
-                <input type="file" id="editor-video-input" accept="video/*" hidden onchange="handleEditorUpload(event)" />
+                <input type="file" id="editor-video-input" accept="video/*" multiple hidden onchange="handleEditorUpload(event)" />
               </div>
-              <div class="editor-videos-list" id="editor-videos-list"></div>
+
+              <div class="editor-video-list" id="editor-video-list"></div>
             </div>
 
-            <div class="editor-step" id="editor-step-2">
-              <div class="step-header">
-                <div class="step-number">02</div>
+            <div class="editor-history-panel">
+              <div class="editor-history-header">
                 <div>
-                  <h3>Formatos automáticos</h3>
-                  <p>Con Gemini activo, ReelFlow analiza el video y elige los formatos más adecuados de esta lista.</p>
+                  <h3>Historial</h3>
+                  <p>Cola, procesados, listos y fallidos por video.</p>
                 </div>
-                <div class="step-actions">
-                  <button class="btn btn-ghost btn-sm" onclick="selectAllFormats()">Seleccionar todos</button>
-                  <button class="btn btn-ghost btn-sm" onclick="clearFormats()">Limpiar</button>
-                </div>
+                <div class="editor-history-stats" id="editor-history-stats"></div>
               </div>
 
-              <div class="templates-grid" id="instagram-format-grid"></div>
+              <div class="editor-history-summary" id="editor-history-summary"></div>
 
-              <div class="templates-footer">
-                <div class="selected-count"><span id="selected-formats-count">0</span> de <span id="total-formats-count">8</span> formatos disponibles</div>
+              <div class="editor-history-table-wrapper">
+                <table class="editor-history-table">
+                  <thead>
+                    <tr>
+                      <th>Nombre del video</th>
+                      <th>Copias</th>
+                      <th>Estados</th>
+                      <th>Progreso</th>
+                      <th>Fecha con hora</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="editor-history-tbody">
+                    <tr class="empty-row">
+                      <td colspan="6">
+                        <div class="empty-state-small">
+                          <p>No hay videos cargados todavía.</p>
+                          <button class="btn btn-outline btn-sm" onclick="document.getElementById('editor-video-input').click()">Subir videos</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-
-              <div class="reference-panel">
-                <div class="reference-panel-header">
-                  <div>
-                    <h4>Referencias opcionales</h4>
-                    <p>Si agregás ejemplos, se usan para copiar ritmo, cortes y zonas de texto. Si no, cada formato usa su propio estilo.</p>
-                  </div>
-                  <div class="step-actions">
-                    <button class="btn btn-ghost btn-sm" onclick="selectAllReferences()">Seleccionar refs</button>
-                    <button class="btn btn-ghost btn-sm" onclick="clearReferences()">Limpiar refs</button>
-                  </div>
-                </div>
-
-                <div class="upload-zone upload-zone-editor" id="reference-upload-zone" onclick="document.getElementById('reference-video-input').click()">
-                  <div class="upload-icon">▣</div>
-                  <div class="upload-text">
-                    <strong>Agregá videos de referencia</strong>
-                    <span>o arrastralos acá</span>
-                    <span class="upload-hint">Hasta 15 ejemplos</span>
-                  </div>
-                  <input type="file" id="reference-video-input" accept="video/*" multiple hidden onchange="handleReferenceUpload(event)" />
-                </div>
-
-                <div class="reference-videos-grid" id="reference-videos-grid">
-                  <div class="empty-reference-state">Agregá videos de referencia para inspirar cortes, ritmo y estilo.</div>
-                </div>
-
-                <div class="templates-footer">
-                  <div class="selected-count"><span id="selected-references-count">0</span> de <span id="total-references-count">0</span> referencias seleccionadas</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="editor-step" id="editor-step-3">
-              <div class="step-header">
-                <div class="step-number">03</div>
-                <div>
-                  <h3>Personalizar y generar</h3>
-                  <p>Configurá textos opcionales y prepará una edición por cada formato elegido.</p>
-                </div>
-              </div>
-              <div class="editor-config">
-                <div class="config-grid">
-                  <div class="form-group">
-                    <label>Texto principal (Hook)</label>
-                    <input type="text" class="form-input" id="global-hook" placeholder="Ej: No vas a creer esto..." />
-                  </div>
-                  <div class="form-group">
-                    <label>Texto secundario</label>
-                    <input type="text" class="form-input" id="global-sub" placeholder="Ej: Seguime para más..." />
-                  </div>
-                  <div class="form-group">
-                    <label>Nombre de usuario</label>
-                    <input type="text" class="form-input" id="global-username" placeholder="@tuusuario" />
-                  </div>
-                  <div class="form-group">
-                    <label>Motor de edición</label>
-                    <input type="text" class="form-input" id="editor-engine" value="FFmpeg.wasm local" readonly />
-                  </div>
-                </div>
-                <div class="ai-editor-note" id="gemini-editor-note">
-                  Gemini se activa desde Configuración. Si no hay API key, ReelFlow usa el análisis local.
-                </div>
-                <div class="image-generation-panel">
-                  <label class="toggle-row" for="editor-generate-images">
-                    <input type="checkbox" id="editor-generate-images" onchange="toggleEditorImageGeneration(this.checked)" />
-                    <span>
-                      <strong>Generar imágenes por segmento</strong>
-                      <small id="image-generation-note">Requiere Gemini API Key. Usa costo adicional por imagen generada.</small>
-                    </span>
-                  </label>
-                  <div class="image-generation-controls">
-                    <label for="image-overlay-opacity">Opacidad</label>
-                    <input type="range" id="image-overlay-opacity" min="0.2" max="0.9" step="0.05" value="0.55" onchange="updateImageOverlayOpacity(this.value)" />
-                    <span id="image-overlay-opacity-value">55%</span>
-                  </div>
-                </div>
-                <button class="btn btn-primary btn-lg btn-full" id="generate-btn" onclick="generateFormats()">
-                  <span>◧</span> Generar <span id="gen-count">0</span> formato(s)
-                </button>
-              </div>
-            </div>
-
-            <div class="editor-step" id="editor-step-4" style="display:none">
-              <div class="step-header">
-                <div class="step-number">04</div>
-                <div>
-                  <h3>Resultados</h3>
-                  <p>Videos editados listos para descargar o publicar.</p>
-                </div>
-              </div>
-              <div class="generated-results" id="generated-results"></div>
             </div>
           </div>
         </section>
