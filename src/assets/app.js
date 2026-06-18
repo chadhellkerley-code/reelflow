@@ -4324,7 +4324,8 @@ async function composeEditorVariantVideo(project, copy, width, height, plan, has
       : Math.max(1, Number(project.duration || 1));
     const playbackSeconds = duration / Math.max(0.1, Number(plan.speed || 1));
     const delaySeconds = Math.max(0, Number(plan.delayMs || 0) / 1000);
-    const recordSeconds = delaySeconds + (hasAudio ? Math.min(playbackSeconds, Math.max(1, Number(plan.targetEnd || playbackSeconds))) : playbackSeconds);
+    const targetSeconds = Math.max(1, Number(plan.targetEnd || playbackSeconds));
+    const recordSeconds = delaySeconds + Math.min(playbackSeconds, targetSeconds);
     const overlayPosition = getEditorCanvasOverlayPosition(copy, overlayDrawable.width, overlayDrawable.height, width, height);
     const sourceRect = getEditorCanvasSourceRect(video.videoWidth || width, video.videoHeight || height, plan);
     const brightness = Math.max(0.5, Math.min(1.5, 1 + Number(plan.brightness || 0)));
@@ -4737,7 +4738,11 @@ function estimateSimilarity(signature, previousCopies) {
 }
 
 async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, sourceFile, width, height, hasAudio, previousAccepted) {
-  const maxAttempts = 8;
+  const preferBrowserPipeline =
+    typeof MediaRecorder !== 'undefined' &&
+    typeof HTMLCanvasElement !== 'undefined' &&
+    typeof document !== 'undefined';
+  const maxAttempts = preferBrowserPipeline ? 4 : 8;
   let lastError = null;
   const outputName = `variant_${String(copy.index).padStart(3, '0')}.mp4`;
   const reportProgress = createEditorCopyProgressReporter(copy);
@@ -4757,20 +4762,32 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
       syncEditorProjectMetadata(project);
       refreshEditorUi();
 
-      if (overlay?.blob) {
+      if (!preferBrowserPipeline && overlay?.blob) {
         await ffmpegRuntime.instance.writeFile(overlayName, await ffmpegRuntime.fetchFile(overlay.blob));
         overlayWritten = true;
       }
 
-      reportProgress(40, 'Aplicando las transformaciones...');
-      const args = parseEditorFilterCommand(inputName, overlayWritten ? overlayName : '', outputName, width, height, plan, copy, hasAudio);
-      await execEditorFFmpegChecked(ffmpegRuntime, args, reportProgress);
-      reportProgress(94, 'Analizando la variante...');
-      const data = await ffmpegRuntime.instance.readFile(outputName);
-      const blob = new Blob([data], { type: 'video/mp4' });
-      const file = new File([blob], outputName, { type: 'video/mp4' });
-      const url = URL.createObjectURL(blob);
-      output = { blob, file, url };
+      let generated;
+      if (preferBrowserPipeline) {
+        reportProgress(40, 'Renderizando en el navegador...');
+        const recording = await composeEditorVariantVideo(project, copy, width, height, plan, hasAudio, reportProgress);
+        generated = await transcodeEditorRecording(ffmpegRuntime, recording, outputName, hasAudio, reportProgress);
+      } else {
+        reportProgress(40, 'Aplicando las transformaciones...');
+        const args = parseEditorFilterCommand(inputName, overlayWritten ? overlayName : '', outputName, width, height, plan, copy, hasAudio);
+        await execEditorFFmpegChecked(ffmpegRuntime, args, reportProgress);
+        reportProgress(94, 'Analizando la variante...');
+        const data = await ffmpegRuntime.instance.readFile(outputName);
+        const blob = new Blob([data], { type: 'video/mp4' });
+        generated = {
+          blob,
+          file: new File([blob], outputName, { type: 'video/mp4' }),
+          url: URL.createObjectURL(blob),
+        };
+      }
+      output = generated;
+      const file = generated.file;
+      const url = generated.url;
       const frame = await withTimeout(
         loadVideoFrame(file, 0.45),
         EDITOR_POSTPROCESS_TIMEOUT_MS,
@@ -4796,11 +4813,7 @@ async function renderEditorProjectCopy(project, copy, ffmpegRuntime, inputName, 
       copy.status = 'ready';
       reportProgress(100, 'Listo');
       copy.attempts = attempt + 1;
-      copy.output = {
-        blob,
-        file,
-        url,
-      };
+      copy.output = generated;
       copy.hash = hash;
       copy.audioSignature = audioSignature;
       syncEditorProjectMetadata(project);
