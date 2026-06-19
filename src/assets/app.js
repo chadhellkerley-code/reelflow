@@ -59,6 +59,9 @@ const FFMPEG_FONT_FILE = 'Inter.ttf';
 const EDITOR_FFMPEG_EXEC_TIMEOUT_MS = 25 * 60 * 1000;
 const EDITOR_FFMPEG_STALL_TIMEOUT_MS = 90 * 1000;
 const EDITOR_POSTPROCESS_TIMEOUT_MS = 15 * 1000;
+const VARIANT_UNIQUE_STAGE_TIMEOUT_MS = 6 * 60 * 1000;
+const VARIANT_UNIQUE_ANALYSIS_TIMEOUT_MS = 12 * 1000;
+const VARIANT_UNIQUE_FRAME_SIZES = [720, 540, 360];
 
 const EDITOR_FONT_OPTIONS = [
   { label: 'Syne', family: 'Syne, sans-serif' },
@@ -5230,34 +5233,14 @@ async function startVariantUniqueGeneration() {
   let hasAudio = false;
 
   try {
-    const ffmpegRuntime = await ensureVariantUniqueRuntime(runtimeStatus);
+    let ffmpegRuntime = await ensureVariantUniqueRuntime(runtimeStatus);
     ffmpeg = ffmpegRuntime.instance || ffmpegRuntime;
     const { VariantTransformer } = await import('/src/engine/variantTransformer.js');
     const metadata = await getBrowserVideoMetadata(videoFile);
-    const targetFrame = VariantTransformer.resolveFrameSize(metadata, 1280)
-      || (metadata.width && metadata.height ? { width: metadata.width, height: metadata.height } : null);
     const inputBuffer = await videoFile.arrayBuffer();
     await ffmpeg.writeFile(inputFileName, new Uint8Array(inputBuffer));
     hasAudio = await probeHasAudio(ffmpeg, inputFileName, `variant-unique-audio-${Date.now()}.txt`).catch(() => false);
-    const useProxy = Boolean(
-      targetFrame &&
-      (videoFile.size > 80 * 1024 * 1024 || (metadata.duration || 0) > 120)
-    );
-    const variantInputFileName = useProxy ? 'variant-source-proxy.mp4' : inputFileName;
-
-    if (useProxy) {
-      if (runtimeStatus) runtimeStatus.textContent = 'Preparando proxy liviano para acelerar las variantes...';
-      await execEditorFFmpegChecked(
-        ffmpegRuntime,
-        VariantTransformer.buildProxyCommand(inputFileName, variantInputFileName, targetFrame),
-        pct => {
-          if (progressBar) progressBar.style.width = `${Math.min(pct * 0.18, 18)}%`;
-          if (progressText) progressText.textContent = 'Preparando proxy rápido...';
-        },
-        'No se pudo preparar el proxy rápido.',
-      );
-      if (runtimeStatus) runtimeStatus.textContent = 'Proxy rápido listo. Generando variantes...';
-    }
+    if (runtimeStatus) runtimeStatus.textContent = 'Motor local listo. Generando variantes...';
 
     for (let i = 1; i <= variantCount; i += 1) {
       const variantNum = String(i).padStart(3, '0');
@@ -5265,65 +5248,114 @@ async function startVariantUniqueGeneration() {
       let acceptedVariant = null;
       let acceptedTransforms = null;
       let acceptedSignature = null;
+      const stageFrameSizes = VARIANT_UNIQUE_FRAME_SIZES
+        .map(maxSide => VariantTransformer.resolveFrameSize(metadata, maxSide))
+        .filter(Boolean);
 
       for (let attempt = 0; attempt < maxAttemptsPerVariant; attempt += 1) {
         const transforms = VariantTransformer.generateRandomTransforms(i, attempt);
-        const ffmpegArgs = VariantTransformer.buildFFmpegCommand(
-          variantInputFileName,
-          outputFileName,
-          transforms,
-          hasAudio,
-          targetFrame,
-        );
+        let attemptSucceeded = false;
 
-        if (progressText) {
-          progressText.textContent = `Variante ${i}/${variantCount} (${transforms.speed.toFixed(2)}x)`;
-        }
+        for (const [frameIndex, frameSize] of stageFrameSizes.entries()) {
+          const stageHasAudio = hasAudio && frameIndex === 0;
+          const ffmpegArgs = VariantTransformer.buildFFmpegCommand(
+            inputFileName,
+            outputFileName,
+            transforms,
+            stageHasAudio,
+            frameSize,
+          );
 
-        await execEditorFFmpegChecked(
-          ffmpegRuntime,
-          ffmpegArgs,
-          pct => {
-            const overallPct = ((i - 1 + (pct / 100)) / variantCount) * 100;
-            if (progressBar) progressBar.style.width = `${Math.min(overallPct, 95)}%`;
-            if (progressText) {
-              progressText.textContent = `Variante ${i}/${variantCount} (${transforms.speed.toFixed(2)}x)`;
+          if (progressText) {
+            progressText.textContent = `Variante ${i}/${variantCount} (${transforms.speed.toFixed(2)}x)`;
+          }
+
+          try {
+            await withTimeout(
+              execEditorFFmpegChecked(
+                ffmpegRuntime,
+                ffmpegArgs,
+                pct => {
+                  const overallPct = ((i - 1 + (pct / 100)) / variantCount) * 100;
+                  if (progressBar) progressBar.style.width = `${Math.min(overallPct, 95)}%`;
+                  if (progressText) {
+                    progressText.textContent = `Variante ${i}/${variantCount} (${transforms.speed.toFixed(2)}x)`;
+                  }
+                },
+                `Error procesando variante ${variantNum}`,
+              ),
+              VARIANT_UNIQUE_STAGE_TIMEOUT_MS,
+              `La variante ${variantNum} tardó demasiado y fue reiniciada.`,
+            );
+          } catch (error) {
+            if (ffmpeg?.terminate) {
+              try {
+                ffmpeg.terminate();
+              } catch {
+                // ignore
+              }
             }
-          },
-          `Error procesando variante ${variantNum}`,
-        );
+            resetEditorFFmpegRuntime();
+            ffmpegRuntime = await ensureVariantUniqueRuntime(runtimeStatus);
+            ffmpeg = ffmpegRuntime.instance || ffmpegRuntime;
+            await ffmpeg.writeFile(inputFileName, new Uint8Array(inputBuffer));
+            hasAudio = await probeHasAudio(ffmpeg, inputFileName, `variant-unique-audio-${Date.now()}.txt`).catch(() => false);
+            continue;
+          }
 
-        const outputData = await ffmpeg.readFile(outputFileName);
-        const blob = new Blob([outputData], { type: 'video/mp4' });
-        const outputFile = new File([blob], outputFileName, { type: 'video/mp4' });
-        const frame = await loadVideoFrame(outputFile, 0.45).catch(() => null);
-        const hash = frame ? computePhashFromImageData(frame) : [];
-        const audioSignature = hasAudio
-          ? await computeAudioSignature(outputFile).catch(() => [])
-          : [];
-        const signature = { hash, audioSignature };
+          const outputData = await withTimeout(
+            ffmpeg.readFile(outputFileName),
+            VARIANT_UNIQUE_ANALYSIS_TIMEOUT_MS,
+            'No se pudo leer la variante generada a tiempo.',
+          ).catch(() => null);
+          if (!outputData) {
+            await ffmpeg.deleteFile(outputFileName).catch(() => {});
+            continue;
+          }
 
-        if (!estimateSimilarity(signature, previousAccepted)) {
+          const blob = new Blob([outputData], { type: 'video/mp4' });
+          const outputFile = new File([blob], outputFileName, { type: 'video/mp4' });
+          const frame = await withTimeout(
+            loadVideoFrame(outputFile, 0.45),
+            VARIANT_UNIQUE_ANALYSIS_TIMEOUT_MS,
+            'No se pudo analizar el fotograma a tiempo.',
+          ).catch(() => null);
+          const hash = frame ? computePhashFromImageData(frame) : [];
+          const audioSignature = stageHasAudio
+            ? await withTimeout(
+                computeAudioSignature(outputFile),
+                VARIANT_UNIQUE_ANALYSIS_TIMEOUT_MS,
+                'No se pudo analizar el audio a tiempo.',
+              ).catch(() => [])
+            : [];
+          const signature = { hash, audioSignature };
+
+          if (!estimateSimilarity(signature, previousAccepted)) {
+            await ffmpeg.deleteFile(outputFileName).catch(() => {});
+            continue;
+          }
+
+          acceptedVariant = { name: outputFileName, blob };
+          acceptedTransforms = transforms;
+          acceptedSignature = signature;
+          previousAccepted.push(signature);
+          variants.push(acceptedVariant);
+          manifestEntries.push({
+            filename: outputFileName,
+            size_mb: (blob.size / 1024 / 1024).toFixed(2),
+            transforms: acceptedTransforms,
+            phash: hash,
+            audio_signature: audioSignature,
+            attempts: attempt + 1,
+            stage_frame: frameSize,
+            unique_check_passed: true,
+          });
           await ffmpeg.deleteFile(outputFileName).catch(() => {});
-          continue;
+          attemptSucceeded = true;
+          break;
         }
 
-        acceptedVariant = { name: outputFileName, blob };
-        acceptedTransforms = transforms;
-        acceptedSignature = signature;
-        previousAccepted.push(signature);
-        variants.push(acceptedVariant);
-        manifestEntries.push({
-          filename: outputFileName,
-          size_mb: (blob.size / 1024 / 1024).toFixed(2),
-          transforms: acceptedTransforms,
-          phash: hash,
-          audio_signature: audioSignature,
-          attempts: attempt + 1,
-          unique_check_passed: true,
-        });
-        await ffmpeg.deleteFile(outputFileName).catch(() => {});
-        break;
+        if (attemptSucceeded) break;
       }
 
       if (!acceptedVariant || !acceptedTransforms || !acceptedSignature) {
@@ -5354,7 +5386,6 @@ async function startVariantUniqueGeneration() {
     toast(`Error: ${errorMsg}`, 'error');
   } finally {
     if (ffmpeg) {
-      await ffmpeg.deleteFile('variant-source-proxy.mp4').catch(() => {});
       await ffmpeg.deleteFile(inputFileName).catch(() => {});
     }
     if (btnGenerate) btnGenerate.disabled = false;
