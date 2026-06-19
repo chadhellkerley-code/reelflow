@@ -5,6 +5,23 @@
  * Cada variante usa un combo reproducible de crop, zoom, speed, silencio inicial y gamma.
  */
 export class VariantTransformer {
+  static resolveFrameSize(frameSize, maxSide = 1280) {
+    const rawWidth = Number(frameSize?.width);
+    const rawHeight = Number(frameSize?.height);
+    if (!Number.isFinite(rawWidth) || !Number.isFinite(rawHeight) || rawWidth <= 0 || rawHeight <= 0) {
+      return null;
+    }
+
+    const width = Math.max(2, Math.round(rawWidth));
+    const height = Math.max(2, Math.round(rawHeight));
+
+    const longest = Math.max(width, height);
+    const scale = longest > maxSide ? maxSide / longest : 1;
+    const nextWidth = Math.max(2, Math.round((width * scale) / 2) * 2);
+    const nextHeight = Math.max(2, Math.round((height * scale) / 2) * 2);
+    return { width: nextWidth, height: nextHeight };
+  }
+
   /**
    * Genera parámetros reproducibles para una variante.
    * @param {number} index
@@ -57,12 +74,9 @@ export class VariantTransformer {
     const speed = Math.max(1, Number(transforms?.speed || 1));
     const silenceMs = Math.max(0, Math.round(Number(transforms?.silenceMs || 0)));
     const gamma = Math.max(0.98, Math.min(1, Number(transforms?.gamma || 1)));
-    const targetWidth = Number.isFinite(Number(frameSize?.width))
-      ? Math.max(2, Math.round(Number(frameSize.width) / 2) * 2)
-      : 0;
-    const targetHeight = Number.isFinite(Number(frameSize?.height))
-      ? Math.max(2, Math.round(Number(frameSize.height) / 2) * 2)
-      : 0;
+    const targetFrame = this.resolveFrameSize(frameSize, 1280);
+    const targetWidth = Number.isFinite(Number(targetFrame?.width)) ? Number(targetFrame.width) : 0;
+    const targetHeight = Number.isFinite(Number(targetFrame?.height)) ? Number(targetFrame.height) : 0;
 
     const videoFilters = [
       `crop=w='trunc(iw*${cropRatio} / 2) * 2':h='trunc(ih*${cropRatio} / 2) * 2':x='(iw-ow)/2':y='(ih-oh)/2'`,
@@ -122,5 +136,20 @@ export class VariantTransformer {
       outputPath,
     );
     return args;
+  }
+
+  static buildProxyCommand(inputPath, outputPath, frameSize = null) {
+    const proxyFrame = this.resolveFrameSize(frameSize, 960) || { width: 960, height: 1706 };
+    return [
+      '-i', inputPath,
+      '-vf', `scale=${proxyFrame.width}:${proxyFrame.height}:flags=bicubic,format=yuv420p`,
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-crf', '32',
+      '-c:a', 'aac',
+      '-b:a', '96k',
+      '-movflags', 'faststart',
+      outputPath,
+    ];
   }
 }

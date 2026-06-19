@@ -5234,12 +5234,30 @@ async function startVariantUniqueGeneration() {
     ffmpeg = ffmpegRuntime.instance || ffmpegRuntime;
     const { VariantTransformer } = await import('/src/engine/variantTransformer.js');
     const metadata = await getBrowserVideoMetadata(videoFile);
-    const targetFrame = metadata.width && metadata.height
-      ? { width: metadata.width, height: metadata.height }
-      : null;
+    const targetFrame = VariantTransformer.resolveFrameSize(metadata, 1280)
+      || (metadata.width && metadata.height ? { width: metadata.width, height: metadata.height } : null);
     const inputBuffer = await videoFile.arrayBuffer();
     await ffmpeg.writeFile(inputFileName, new Uint8Array(inputBuffer));
     hasAudio = await probeHasAudio(ffmpeg, inputFileName, `variant-unique-audio-${Date.now()}.txt`).catch(() => false);
+    const useProxy = Boolean(
+      targetFrame &&
+      (videoFile.size > 80 * 1024 * 1024 || (metadata.duration || 0) > 120)
+    );
+    const variantInputFileName = useProxy ? 'variant-source-proxy.mp4' : inputFileName;
+
+    if (useProxy) {
+      if (runtimeStatus) runtimeStatus.textContent = 'Preparando proxy liviano para acelerar las variantes...';
+      await execEditorFFmpegChecked(
+        ffmpegRuntime,
+        VariantTransformer.buildProxyCommand(inputFileName, variantInputFileName, targetFrame),
+        pct => {
+          if (progressBar) progressBar.style.width = `${Math.min(pct * 0.18, 18)}%`;
+          if (progressText) progressText.textContent = 'Preparando proxy rápido...';
+        },
+        'No se pudo preparar el proxy rápido.',
+      );
+      if (runtimeStatus) runtimeStatus.textContent = 'Proxy rápido listo. Generando variantes...';
+    }
 
     for (let i = 1; i <= variantCount; i += 1) {
       const variantNum = String(i).padStart(3, '0');
@@ -5251,7 +5269,7 @@ async function startVariantUniqueGeneration() {
       for (let attempt = 0; attempt < maxAttemptsPerVariant; attempt += 1) {
         const transforms = VariantTransformer.generateRandomTransforms(i, attempt);
         const ffmpegArgs = VariantTransformer.buildFFmpegCommand(
-          inputFileName,
+          variantInputFileName,
           outputFileName,
           transforms,
           hasAudio,
@@ -5336,6 +5354,7 @@ async function startVariantUniqueGeneration() {
     toast(`Error: ${errorMsg}`, 'error');
   } finally {
     if (ffmpeg) {
+      await ffmpeg.deleteFile('variant-source-proxy.mp4').catch(() => {});
       await ffmpeg.deleteFile(inputFileName).catch(() => {});
     }
     if (btnGenerate) btnGenerate.disabled = false;
