@@ -51,7 +51,7 @@ state.settings = {
 
 const PUBLIC_ORIGIN = 'https://reelflow-topaz.vercel.app';
 const FIREBASE_CONFIG = {
-  apiKey: 'AIzaSyBZb3b98HVEb_PCi-28CIZ9k6IbcJyL33iM',
+  apiKey: 'AIzaSyBZ3b98HVEb_PCi-28CIZ9k6IbcJyL33iM',
   authDomain: 'reelflow-1875f.firebaseapp.com',
   projectId: 'reelflow-1875f',
   storageBucket: 'reelflow-1875f.firebasestorage.app',
