@@ -51,7 +51,7 @@ state.settings = {
 
 const PUBLIC_ORIGIN = 'https://reelflow-topaz.vercel.app';
 const FIREBASE_CONFIG = {
-  apiKey: 'AIzaSyBZb3s98HVEb_PCi-28CIZ9k6IbcJyL33iM',
+  apiKey: 'AIzaSyBZb3b98HVEb_PCi-28CIZ9k6IbcJyL33iM',
   authDomain: 'reelflow-1875f.firebaseapp.com',
   projectId: 'reelflow-1875f',
   storageBucket: 'reelflow-1875f.firebasestorage.app',
@@ -598,6 +598,17 @@ function renderAuthState(user) {
 
 function getAuthErrorMessage(error) {
   const code = error?.code || '';
+  const message = String(error?.message || '').toLowerCase();
+  const isApiKeyError =
+    code === 'auth/invalid-api-key' ||
+    code === 'auth/api-key-not-valid' ||
+    message.includes('api-key-not-valid') ||
+    message.includes('invalid api key');
+
+  if (isApiKeyError) {
+    return 'La API key de Firebase no es válida. Revisá que la clave del proyecto sea la correcta y que el dominio esté autorizado en Firebase Console.';
+  }
+
   switch (code) {
     case 'auth/invalid-email':
       return 'El correo no es válido.';
@@ -699,7 +710,7 @@ async function bootstrapFirebaseAuth() {
     const authError = document.getElementById('auth-error');
     setAuthScreenState('ready');
     if (authStatus) authStatus.textContent = 'Firebase no respondió';
-    if (authError) authError.textContent = 'No se pudo cargar Firebase Authentication.';
+    if (authError) authError.textContent = getAuthErrorMessage(error);
   }
 }
 
