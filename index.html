@@ -390,8 +390,8 @@
               <div class="card-title">🔄 Variantes Únicas para Instagram</div>
 
               <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.6;">
-                Genera N copias de tu video con transformaciones imperceptibles (crop, zoom, velocidad, brillo).
-                Cada copia mantiene la apariencia visual, pero cambia su hash para que Instagram las trate como videos distintos.
+                Subí un solo video base y ReelFlow lo manda a GitHub Actions para generar N variantes con transformaciones mínimas.
+                Al terminar, se descarga automáticamente un ZIP con todas las copias y un manifest con los metadatos del job.
               </p>
 
               <div
@@ -399,7 +399,7 @@
                 class="editor-scroll-note"
                 style="margin-bottom: 16px; min-height: 22px;"
               >
-                Cargá un video base para preparar el motor local.
+                Cargá un video base. El procesamiento se ejecuta en GitHub Actions y el resultado vuelve como ZIP.
               </div>
 
               <div class="form-group">
@@ -422,6 +422,18 @@
                   >
                     10
                   </span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="variant-unique-mode">Modo de procesamiento</label>
+                <select id="variant-unique-mode" class="form-input">
+                  <option value="fast" selected>Rápido - menos validación, termina antes</option>
+                  <option value="balanced">Balanceado - buen equilibrio entre tiempo y control</option>
+                  <option value="full">Completo - procesa todo el video con más verificación</option>
+                </select>
+                <div class="editor-scroll-note" style="margin-top: 8px;">
+                  El modo rápido recorta la parte procesada por variante y baja la cantidad de reintentos.
                 </div>
               </div>
 
@@ -451,7 +463,7 @@
                   onclick="startVariantUniqueGeneration()"
                   style="flex: 2;"
                 >
-                  ⚡ Generar Variantes Únicas
+                  ⚡ Generar en GitHub Actions
                 </button>
               </div>
             </div>

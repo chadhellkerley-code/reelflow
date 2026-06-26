@@ -18,6 +18,7 @@ const state = {
   editorPreviewMode: 'original',
   editorTitleDrag: null,
   editorQueueRunning: false,
+  variantUniqueJob: null,
   referenceVideos: [],
   selectedReferences: new Set(),
   selectedTemplates: new Set(['ig-cinematic-hook']),
@@ -59,9 +60,6 @@ const FFMPEG_FONT_FILE = 'Inter.ttf';
 const EDITOR_FFMPEG_EXEC_TIMEOUT_MS = 25 * 60 * 1000;
 const EDITOR_FFMPEG_STALL_TIMEOUT_MS = 90 * 1000;
 const EDITOR_POSTPROCESS_TIMEOUT_MS = 15 * 1000;
-const VARIANT_UNIQUE_STAGE_TIMEOUT_MS = 6 * 60 * 1000;
-const VARIANT_UNIQUE_ANALYSIS_TIMEOUT_MS = 12 * 1000;
-const VARIANT_UNIQUE_FRAME_SIZES = [720, 540, 360];
 
 const EDITOR_FONT_OPTIONS = [
   { label: 'Syne', family: 'Syne, sans-serif' },
@@ -536,7 +534,6 @@ function navigateTo(page) {
   if (page === 'editor') {
     renderEditorVideos();
     updateVariantUniqueControls();
-    if (state.editorVideos.length) void ensureVariantUniqueRuntime();
   }
   if (page === 'history')   renderHistory();
   if (page === 'settings')  renderSettings();
@@ -932,7 +929,7 @@ async function publishInstagramReel(account, payload, statusEl) {
   throw new Error('Instagram sigue procesando el video. Probá publicar otra vez en unos minutos.');
 }
 
-async function uploadVideoToStorage(file, statusEl) {
+async function uploadVideoToStorage(file, statusEl, onProgress) {
   if (!file) throw new Error('Seleccioná un video primero.');
 
   statusEl.textContent = 'Verificando configuración de Blob...';
@@ -945,7 +942,7 @@ async function uploadVideoToStorage(file, statusEl) {
   const { upload } = await import('https://esm.sh/@vercel/blob@2.4.0/client');
   const pathname = `reels/${Date.now()}-${file.name.replace(/[^a-z0-9._-]/gi, '-')}`;
   const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), 180000);
+  const timeout = setTimeout(() => abortController.abort(), 10 * 60 * 1000);
   let blob;
 
   try {
@@ -959,6 +956,7 @@ async function uploadVideoToStorage(file, statusEl) {
       abortSignal: abortController.signal,
       onUploadProgress: ({ percentage }) => {
         const progress = Math.round(percentage);
+        if (typeof onProgress === 'function') onProgress(progress);
         statusEl.textContent = progress >= 100
           ? 'Finalizando subida del video...'
           : `Subiendo video a storage... ${progress}%`;
@@ -2476,49 +2474,26 @@ function updateVariantUniqueControls() {
   const button = document.getElementById('variant-unique-btn');
   const statusEl = getVariantUniqueRuntimeStatusEl();
   const hasVideo = Boolean(state.editorVideos?.length);
-  const runtimeReady = Boolean(state.ffmpeg.loaded && state.ffmpeg.instance);
-  const runtimeLoading = Boolean(state.ffmpeg.loading);
+  const jobStatus = String(state.variantUniqueJob?.status || '');
+  const jobRunning = Boolean(jobStatus && !['completed', 'error', 'failed'].includes(jobStatus));
 
   if (button) {
-    button.disabled = !hasVideo || runtimeLoading || !runtimeReady;
-    button.textContent = runtimeLoading
-      ? 'Preparando motor local...'
-      : '⚡ Generar Variantes Únicas';
+    button.disabled = !hasVideo || jobRunning;
+    button.textContent = jobRunning
+      ? 'Procesando en GitHub Actions...'
+      : '⚡ Generar en GitHub Actions';
   }
 
   if (!statusEl) return;
   if (!hasVideo) {
-    statusEl.textContent = 'Cargá un video base para preparar el motor local.';
+    statusEl.textContent = 'Cargá un video base. El video se sube a Blob y GitHub Actions arma el ZIP.';
     return;
   }
-  if (runtimeLoading) {
-    statusEl.textContent = 'Preparando motor local...';
+  if (jobRunning) {
+    statusEl.textContent = 'GitHub Actions está procesando la tanda de variantes...';
     return;
   }
-  if (runtimeReady) {
-    statusEl.textContent = 'Motor local listo. Ya podés generar variantes.';
-    return;
-  }
-  statusEl.textContent = 'Preparando motor local cuando cargues el video.';
-}
-
-async function ensureVariantUniqueRuntime(statusEl = getVariantUniqueRuntimeStatusEl()) {
-  if (state.ffmpeg.loaded && state.ffmpeg.instance) {
-    updateVariantUniqueControls();
-    return state.ffmpeg;
-  }
-
-  if (state.ffmpeg.loading) {
-    if (statusEl) statusEl.textContent = 'Preparando motor local...';
-    while (state.ffmpeg.loading) await sleep(250);
-    updateVariantUniqueControls();
-    return state.ffmpeg;
-  }
-
-  if (statusEl) statusEl.textContent = 'Preparando motor local...';
-  const runtime = await loadFFmpeg(statusEl);
-  updateVariantUniqueControls();
-  return runtime;
+  statusEl.textContent = 'Listo para subir el video base y generar el ZIP en GitHub Actions.';
 }
 
 function resetEditorFFmpegRuntime() {
@@ -3417,7 +3392,6 @@ function handleEditorUpload(event) {
   state.editorVideos = [file];
   event.target.value = '';
   updateEditorCounters();
-  void ensureVariantUniqueRuntime();
   toast('Video base cargado', 'success');
 }
 
@@ -5203,9 +5177,20 @@ async function startVariantUniqueGeneration() {
     return;
   }
 
+  if (state.variantUniqueJob && !['completed', 'error', 'failed'].includes(state.variantUniqueJob.status)) {
+    toast('Ya hay una generación de variantes en curso.', 'info');
+    return;
+  }
+
   const variantCount = parseInt(document.getElementById('variant-unique-count')?.value || '10', 10);
   if (!Number.isFinite(variantCount) || variantCount < 1 || variantCount > 100) {
     toast('Las variantes deben ser entre 1 y 100', 'error');
+    return;
+  }
+
+  const variantMode = String(document.getElementById('variant-unique-mode')?.value || 'fast').trim();
+  if (!['fast', 'balanced', 'full'].includes(variantMode)) {
+    toast('Seleccioná un modo de procesamiento válido', 'error');
     return;
   }
 
@@ -5216,207 +5201,140 @@ async function startVariantUniqueGeneration() {
   const progressText = document.getElementById('variant-unique-progress-text');
   const successMessage = document.getElementById('variant-unique-success');
 
+  state.variantUniqueJob = { status: 'uploading' };
   if (btnGenerate) btnGenerate.disabled = true;
   if (progressContainer) progressContainer.style.display = 'block';
   if (successMessage) successMessage.style.display = 'none';
   if (progressBar) progressBar.style.width = '0%';
-  if (progressText) progressText.textContent = 'Preparando...';
-
-  if (runtimeStatus) runtimeStatus.textContent = 'Preparando motor local...';
-
-  const inputFileName = 'variant-input.mp4';
-  let ffmpeg = null;
-  const variants = [];
-  const manifestEntries = [];
-  const previousAccepted = [];
-  const maxAttemptsPerVariant = 8;
-  let hasAudio = false;
+  if (progressText) progressText.textContent = 'Preparando subida...';
+  updateVariantUniqueControls();
 
   try {
-    let ffmpegRuntime = await ensureVariantUniqueRuntime(runtimeStatus);
-    ffmpeg = ffmpegRuntime.instance || ffmpegRuntime;
-    const { VariantTransformer } = await import('/src/engine/variantTransformer.js');
-    const metadata = await getBrowserVideoMetadata(videoFile);
-    const inputBuffer = await videoFile.arrayBuffer();
-    await ffmpeg.writeFile(inputFileName, new Uint8Array(inputBuffer));
-    hasAudio = await probeHasAudio(ffmpeg, inputFileName, `variant-unique-audio-${Date.now()}.txt`).catch(() => false);
-    if (runtimeStatus) runtimeStatus.textContent = 'Motor local listo. Generando variantes...';
+    if (runtimeStatus) runtimeStatus.textContent = 'Subiendo video base a Blob...';
+    if (progressBar) progressBar.style.width = '8%';
+    const sourceUrl = await uploadVideoToStorage(videoFile, progressText, percentage => {
+      if (!progressBar) return;
+      const mapped = Math.max(6, Math.min(20, Math.round(percentage * 0.18)));
+      progressBar.style.width = `${mapped}%`;
+    });
 
-    for (let i = 1; i <= variantCount; i += 1) {
-      const variantNum = String(i).padStart(3, '0');
-      const outputFileName = `variant-${variantNum}.mp4`;
-      let acceptedVariant = null;
-      let acceptedTransforms = null;
-      let acceptedSignature = null;
-      const stageFrameSizes = VARIANT_UNIQUE_FRAME_SIZES
-        .map(maxSide => VariantTransformer.resolveFrameSize(metadata, maxSide))
-        .filter(Boolean);
+    state.variantUniqueJob = { status: 'creating' };
+    updateVariantUniqueControls();
+    if (runtimeStatus) runtimeStatus.textContent = 'Creando job en GitHub Actions...';
+    if (progressText) progressText.textContent = 'Creando job en GitHub Actions...';
+    if (progressBar) progressBar.style.width = '22%';
 
-      for (let attempt = 0; attempt < maxAttemptsPerVariant; attempt += 1) {
-        const transforms = VariantTransformer.generateRandomTransforms(i, attempt);
-        let attemptSucceeded = false;
+    const response = await fetch('/api/variants/create', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sourceUrl,
+        sourceFileName: videoFile.name,
+        variantCount,
+        variantMode,
+      }),
+    });
 
-        for (const [frameIndex, frameSize] of stageFrameSizes.entries()) {
-          const stageHasAudio = hasAudio && frameIndex === 0;
-          const ffmpegArgs = VariantTransformer.buildFFmpegCommand(
-            inputFileName,
-            outputFileName,
-            transforms,
-            stageHasAudio,
-            frameSize,
-          );
-
-          if (progressText) {
-            progressText.textContent = `Variante ${i}/${variantCount} (${transforms.speed.toFixed(2)}x)`;
-          }
-
-          try {
-            await withTimeout(
-              execEditorFFmpegChecked(
-                ffmpegRuntime,
-                ffmpegArgs,
-                pct => {
-                  const overallPct = ((i - 1 + (pct / 100)) / variantCount) * 100;
-                  if (progressBar) progressBar.style.width = `${Math.min(overallPct, 95)}%`;
-                  if (progressText) {
-                    progressText.textContent = `Variante ${i}/${variantCount} (${transforms.speed.toFixed(2)}x)`;
-                  }
-                },
-                `Error procesando variante ${variantNum}`,
-              ),
-              VARIANT_UNIQUE_STAGE_TIMEOUT_MS,
-              `La variante ${variantNum} tardó demasiado y fue reiniciada.`,
-            );
-          } catch (error) {
-            if (ffmpeg?.terminate) {
-              try {
-                ffmpeg.terminate();
-              } catch {
-                // ignore
-              }
-            }
-            resetEditorFFmpegRuntime();
-            ffmpegRuntime = await ensureVariantUniqueRuntime(runtimeStatus);
-            ffmpeg = ffmpegRuntime.instance || ffmpegRuntime;
-            await ffmpeg.writeFile(inputFileName, new Uint8Array(inputBuffer));
-            hasAudio = await probeHasAudio(ffmpeg, inputFileName, `variant-unique-audio-${Date.now()}.txt`).catch(() => false);
-            continue;
-          }
-
-          const outputData = await withTimeout(
-            ffmpeg.readFile(outputFileName),
-            VARIANT_UNIQUE_ANALYSIS_TIMEOUT_MS,
-            'No se pudo leer la variante generada a tiempo.',
-          ).catch(() => null);
-          if (!outputData) {
-            await ffmpeg.deleteFile(outputFileName).catch(() => {});
-            continue;
-          }
-
-          const blob = new Blob([outputData], { type: 'video/mp4' });
-          const outputFile = new File([blob], outputFileName, { type: 'video/mp4' });
-          const frame = await withTimeout(
-            loadVideoFrame(outputFile, 0.45),
-            VARIANT_UNIQUE_ANALYSIS_TIMEOUT_MS,
-            'No se pudo analizar el fotograma a tiempo.',
-          ).catch(() => null);
-          const hash = frame ? computePhashFromImageData(frame) : [];
-          const audioSignature = stageHasAudio
-            ? await withTimeout(
-                computeAudioSignature(outputFile),
-                VARIANT_UNIQUE_ANALYSIS_TIMEOUT_MS,
-                'No se pudo analizar el audio a tiempo.',
-              ).catch(() => [])
-            : [];
-          const signature = { hash, audioSignature };
-
-          if (!estimateSimilarity(signature, previousAccepted)) {
-            await ffmpeg.deleteFile(outputFileName).catch(() => {});
-            continue;
-          }
-
-          acceptedVariant = { name: outputFileName, blob };
-          acceptedTransforms = transforms;
-          acceptedSignature = signature;
-          previousAccepted.push(signature);
-          variants.push(acceptedVariant);
-          manifestEntries.push({
-            filename: outputFileName,
-            size_mb: (blob.size / 1024 / 1024).toFixed(2),
-            transforms: acceptedTransforms,
-            phash: hash,
-            audio_signature: audioSignature,
-            attempts: attempt + 1,
-            stage_frame: frameSize,
-            unique_check_passed: true,
-          });
-          await ffmpeg.deleteFile(outputFileName).catch(() => {});
-          attemptSucceeded = true;
-          break;
-        }
-
-        if (attemptSucceeded) break;
-      }
-
-      if (!acceptedVariant || !acceptedTransforms || !acceptedSignature) {
-        throw new Error(`No se pudo generar la variante ${variantNum} sin duplicados.`);
-      }
+    const job = await response.json().catch(() => ({}));
+    if (!response.ok || !job?.ok) {
+      throw new Error(job?.error || 'No se pudo crear el job de GitHub Actions.');
     }
 
-    if (progressBar) progressBar.style.width = '95%';
-    if (progressText) progressText.textContent = 'Empaquetando ZIP...';
+    state.variantUniqueJob = {
+      status: 'queued',
+      jobId: job.jobId,
+      statusUrl: job.statusUrl,
+    };
+    updateVariantUniqueControls();
+    if (runtimeStatus) runtimeStatus.textContent = 'GitHub Actions tomó el job. Esperando procesamiento...';
+    if (progressText) progressText.textContent = 'GitHub Actions tomó el job. Esperando procesamiento...';
+    if (progressBar) progressBar.style.width = '25%';
 
-    const manifestJson = JSON.stringify({
-      generated_at: new Date().toISOString(),
-      original_file: videoFile.name,
-      total_variants: variants.length,
-      variants: manifestEntries,
-    }, null, 2);
+    const finalJob = await pollVariantUniqueJob(job.statusUrl, currentJob => {
+      state.variantUniqueJob = {
+        status: currentJob.status,
+        jobId: job.jobId,
+        statusUrl: job.statusUrl,
+      };
+      updateVariantUniqueControls();
 
-    const finalZip = await variantBuildZipWithManifest(variants, manifestJson);
-    variantDownloadZip(finalZip, 'variantes-unicas.zip');
+      if (progressBar) {
+        const pct = Number(currentJob.progress || 0);
+        progressBar.style.width = `${Math.max(5, Math.min(95, pct))}%`;
+      }
+      if (progressText) {
+        progressText.textContent = currentJob.message || 'Procesando variantes...';
+      }
+      if (runtimeStatus) {
+        runtimeStatus.textContent = currentJob.message || 'Procesando variantes...';
+      }
+    });
+
+    state.variantUniqueJob = {
+      status: finalJob.status,
+      jobId: job.jobId,
+      statusUrl: job.statusUrl,
+    };
+    updateVariantUniqueControls();
+
+    if (finalJob.status !== 'completed') {
+      throw new Error(finalJob.error || finalJob.message || 'La generación no terminó correctamente.');
+    }
+
+    if (progressBar) progressBar.style.width = '100%';
+    if (progressText) progressText.textContent = finalJob.message || 'Descargando ZIP...';
+    if (runtimeStatus) runtimeStatus.textContent = finalJob.message || 'Descargando ZIP...';
+
+    const downloadUrl = finalJob.downloadUrl || finalJob.resultUrl;
+    if (!downloadUrl) {
+      throw new Error('GitHub Actions no devolvió la URL del ZIP.');
+    }
+
+    variantDownloadZip(downloadUrl, finalJob.resultName || 'variantes-unicas.zip');
 
     if (progressContainer) progressContainer.style.display = 'none';
     if (progressBar) progressBar.style.width = '0%';
     if (successMessage) successMessage.style.display = 'block';
 
-    toast(`✓ ${variants.length} variantes generadas y descargadas`, 'success');
+    toast(`✓ ${variantCount} variantes generadas y descargadas`, 'success');
   } catch (error) {
     const errorMsg = error?.message || 'Error desconocido';
+    if (progressText) progressText.textContent = errorMsg;
+    if (runtimeStatus) runtimeStatus.textContent = errorMsg;
     toast(`Error: ${errorMsg}`, 'error');
   } finally {
-    if (ffmpeg) {
-      await ffmpeg.deleteFile(inputFileName).catch(() => {});
-    }
+    state.variantUniqueJob = null;
     if (btnGenerate) btnGenerate.disabled = false;
-    state.ffmpeg.activeStatusId = null;
     updateVariantUniqueControls();
   }
 }
 
-async function variantBuildZipWithManifest(videoFiles, manifestJson) {
-  const manifestFile = {
-    name: 'manifest.json',
-    blob: new Blob([manifestJson], { type: 'application/json' }),
-  };
-
-  try {
-    const { default: JSZip } = await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm');
-    const zip = new JSZip();
-    for (const file of [...videoFiles, manifestFile]) {
-      zip.file(file.name, file.blob);
+async function pollVariantUniqueJob(statusUrl, onUpdate) {
+  for (;;) {
+    const response = await fetch(statusUrl, { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.ok === false) {
+      throw new Error(payload?.error || 'No se pudo consultar el estado del job.');
     }
-    return zip.generateAsync({ type: 'blob' });
-  } catch {
-    return buildZipBlob([...videoFiles, manifestFile]);
+
+    const job = payload.job || payload;
+    if (typeof onUpdate === 'function') onUpdate(job);
+
+    if (['completed', 'error', 'failed'].includes(String(job?.status || ''))) {
+      return job;
+    }
+
+    await sleep(5000);
   }
 }
 
-function variantDownloadZip(blob, filename) {
-  const url = URL.createObjectURL(blob);
+function variantDownloadZip(url, filename) {
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
+  link.rel = 'noopener';
   link.style.display = 'none';
 
   document.body.appendChild(link);
@@ -5424,7 +5342,6 @@ function variantDownloadZip(blob, filename) {
 
   setTimeout(() => {
     link.remove();
-    URL.revokeObjectURL(url);
   }, 100);
 }
 
