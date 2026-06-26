@@ -66,10 +66,9 @@ export class VariantTransformer {
    * @param {{crop:number, zoom:number, speed:number, silenceMs:number, gamma:number}} transforms
    * @param {boolean} [hasAudio=true]
    * @param {{width:number, height:number}|null} [frameSize=null]
-   * @param {number|null} [maxDurationSeconds=null]
    * @returns {string[]}
    */
-  static buildFFmpegCommand(inputPath, outputPath, transforms, hasAudio = true, frameSize = null, maxDurationSeconds = null) {
+  static buildFFmpegCommand(inputPath, outputPath, transforms, hasAudio = true, frameSize = null) {
     const cropRatio = Math.max(0.97, Math.min(1, Number(transforms?.crop || 100) / 100));
     const zoom = Math.max(1, Number(transforms?.zoom || 1));
     const speed = Math.max(1, Number(transforms?.speed || 1));
@@ -78,11 +77,8 @@ export class VariantTransformer {
     const targetFrame = this.resolveFrameSize(frameSize, 1280);
     const targetWidth = Number.isFinite(Number(targetFrame?.width)) ? Number(targetFrame.width) : 0;
     const targetHeight = Number.isFinite(Number(targetFrame?.height)) ? Number(targetFrame.height) : 0;
-    const trimmedDuration = Number(maxDurationSeconds);
-    const shouldTrimDuration = Number.isFinite(trimmedDuration) && trimmedDuration > 0;
 
     const videoFilters = [
-      ...(shouldTrimDuration ? [`trim=0:${trimmedDuration.toFixed(3)}`, 'setpts=PTS-STARTPTS'] : []),
       `crop=w='trunc(iw*${cropRatio} / 2) * 2':h='trunc(ih*${cropRatio} / 2) * 2':x='(iw-ow)/2':y='(ih-oh)/2'`,
       `scale=w='trunc(iw*${zoom} / 2) * 2':h='trunc(ih*${zoom} / 2) * 2'`,
       targetWidth && targetHeight
@@ -105,7 +101,6 @@ export class VariantTransformer {
 
     if (hasAudio) {
       const audioFilters = [
-        ...(shouldTrimDuration ? [`atrim=0:${trimmedDuration.toFixed(3)}`] : []),
         `atempo=${speed}`,
       ];
 
