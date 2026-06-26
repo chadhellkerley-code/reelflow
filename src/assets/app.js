@@ -50,7 +50,7 @@ state.settings = {
 };
 
 const PUBLIC_ORIGIN = 'https://reelflow-topaz.vercel.app';
-const FIREBASE_CONFIG = {
+const DEFAULT_FIREBASE_CONFIG = {
   apiKey: 'AIzaSyBZb3b98HVEb_PCi-28CIZ9k6IbcJyL33iM',
   authDomain: 'reelflow-1875f.firebaseapp.com',
   projectId: 'reelflow-1875f',
@@ -514,6 +514,62 @@ function getInstagramCallbackUrl() {
   return `${getPublicOrigin()}/auth/instagram/callback`;
 }
 
+function getStoredFirebaseConfig() {
+  try {
+    const stored = localStorage.getItem('rf_firebase_config');
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function getFirebaseConfig() {
+  return {
+    ...DEFAULT_FIREBASE_CONFIG,
+    ...getStoredFirebaseConfig(),
+  };
+}
+
+function formatFirebaseConfigForEditor() {
+  return `${JSON.stringify(getFirebaseConfig(), null, 2)}\n`;
+}
+
+function setFirebaseConfigEditorValue() {
+  const editor = document.getElementById('firebase-config-json');
+  if (!editor) return;
+  editor.value = formatFirebaseConfigForEditor();
+}
+
+function saveFirebaseConfig() {
+  const editor = document.getElementById('firebase-config-json');
+  const authError = document.getElementById('auth-error');
+
+  if (!editor) return;
+
+  try {
+    const parsed = JSON.parse(editor.value);
+    localStorage.setItem('rf_firebase_config', JSON.stringify(parsed));
+    firebaseAuthPromise = null;
+    if (authError) authError.textContent = '';
+    toast('Configuración de Firebase guardada', 'success');
+    window.location.reload();
+  } catch {
+    if (authError) authError.textContent = 'Pegá un JSON válido de Firebase config.';
+  }
+}
+
+function resetFirebaseConfig() {
+  localStorage.removeItem('rf_firebase_config');
+  firebaseAuthPromise = null;
+  setFirebaseConfigEditorValue();
+  const authError = document.getElementById('auth-error');
+  if (authError) authError.textContent = '';
+  toast('Configuración original restaurada', 'success');
+}
+
 // ── Firebase Auth ─────────────────────────────────────────
 let firebaseAuthPromise = null;
 
@@ -537,7 +593,7 @@ async function loadFirebaseAuth() {
       import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'),
     ]);
 
-    const app = initializeApp(FIREBASE_CONFIG);
+    const app = initializeApp(getFirebaseConfig());
     const auth = getAuth(app);
 
     try {
@@ -630,6 +686,20 @@ function getAuthErrorMessage(error) {
   }
 }
 
+function isFirebaseApiKeyError(error) {
+  const code = error?.code || '';
+  const message = String(error?.message || '').toLowerCase();
+  return code === 'auth/invalid-api-key' ||
+    code === 'auth/api-key-not-valid' ||
+    message.includes('api-key-not-valid') ||
+    message.includes('invalid api key');
+}
+
+function openFirebaseConfigEditor() {
+  const details = document.querySelector('.auth-config-details');
+  if (details) details.open = true;
+}
+
 async function handleAuthSubmit(event) {
   event.preventDefault();
 
@@ -677,6 +747,7 @@ async function handleAuthSubmit(event) {
     if (passwordInput) passwordInput.value = '';
   } catch (error) {
     if (errorEl) errorEl.textContent = getAuthErrorMessage(error);
+    if (isFirebaseApiKeyError(error)) openFirebaseConfigEditor();
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -711,6 +782,7 @@ async function bootstrapFirebaseAuth() {
     setAuthScreenState('ready');
     if (authStatus) authStatus.textContent = 'Firebase no respondió';
     if (authError) authError.textContent = getAuthErrorMessage(error);
+    if (isFirebaseApiKeyError(error)) openFirebaseConfigEditor();
   }
 }
 
@@ -5392,6 +5464,7 @@ function setupInstagramOAuthFields() {
 function init() {
   syncGeminiGlobals();
   setupInstagramOAuthFields();
+  setFirebaseConfigEditorValue();
 
   state.accounts = state.accounts.filter(account => account.platform === 'ig');
   state.history = state.history.filter(item => item?.platform !== 'ai');

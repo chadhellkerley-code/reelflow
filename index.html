@@ -66,6 +66,25 @@
             Entrar o crear cuenta
           </button>
         </form>
+
+        <details class="auth-config-details">
+          <summary>Configuración avanzada de Firebase</summary>
+          <p class="auth-config-note">
+            Pegá la configuración web exacta del proyecto Firebase. Esto evita depender de una clave hardcodeada si cambió o fue restringida.
+          </p>
+          <div class="form-group">
+            <label for="firebase-config-json">Firebase config JSON</label>
+            <textarea id="firebase-config-json" class="form-input auth-config-textarea" rows="8" spellcheck="false"></textarea>
+          </div>
+          <div class="auth-config-actions">
+            <button type="button" class="btn btn-outline btn-sm" onclick="resetFirebaseConfig()">
+              Restaurar original
+            </button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="saveFirebaseConfig()">
+              Guardar config
+            </button>
+          </div>
+        </details>
       </div>
     </div>
   </section>
