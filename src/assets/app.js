@@ -683,7 +683,7 @@ function formatBytes(bytes) {
 //  ACCOUNTS
 // ═══════════════════════════════════════════════════════════
 function connectInstagram() {
-  const appId = document.getElementById('ig-app-id').value.trim();
+  const appId = localStorage.getItem('rf_ig_app_id') || INSTAGRAM_APP_ID;
 
   if (!appId) {
     toast('Completá el App ID de Instagram', 'error');
