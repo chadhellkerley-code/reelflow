@@ -10,6 +10,8 @@ const state = {
   accounts: JSON.parse(localStorage.getItem('rf_accounts') || '[]'),
   history:  JSON.parse(localStorage.getItem('rf_history')  || '[]'),
   settings: JSON.parse(localStorage.getItem('rf_settings') || '{"backendUrl":"http://localhost:4000"}'),
+  authUser: null,
+  authReady: false,
   selectedVideo: null,
   editorVideos: [],
   editorProjects: [],
@@ -48,6 +50,15 @@ state.settings = {
 };
 
 const PUBLIC_ORIGIN = 'https://reelflow-topaz.vercel.app';
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyBZb3s98HVEb_PCi-28CIZ9k6IbcJyL33iM',
+  authDomain: 'reelflow-1875f.firebaseapp.com',
+  projectId: 'reelflow-1875f',
+  storageBucket: 'reelflow-1875f.firebasestorage.app',
+  messagingSenderId: '545252687937',
+  appId: '1:545252687937:web:69e74a0ef7c1dde0eb06c0',
+  measurementId: 'G-1MGVR8D91E',
+};
 const INSTAGRAM_APP_ID = '1428803625601557';
 const INSTAGRAM_SCOPES = 'instagram_business_basic,instagram_business_content_publish';
 const TIKTOK_CLIENT_KEY = 'sbaw89mga3yconmz26';
@@ -501,6 +512,195 @@ function getPublicOrigin() {
 
 function getInstagramCallbackUrl() {
   return `${getPublicOrigin()}/auth/instagram/callback`;
+}
+
+// ── Firebase Auth ─────────────────────────────────────────
+let firebaseAuthPromise = null;
+
+async function loadFirebaseAuth() {
+  if (firebaseAuthPromise) return firebaseAuthPromise;
+
+  firebaseAuthPromise = (async () => {
+    const [
+      { initializeApp },
+      {
+        getAuth,
+        setPersistence,
+        browserLocalPersistence,
+        onAuthStateChanged,
+        signInWithEmailAndPassword,
+        createUserWithEmailAndPassword,
+        signOut,
+      },
+    ] = await Promise.all([
+      import('https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js'),
+      import('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js'),
+    ]);
+
+    const app = initializeApp(FIREBASE_CONFIG);
+    const auth = getAuth(app);
+
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+    } catch {
+      // If persistence cannot be set, continue with the default auth state.
+    }
+
+    return {
+      auth,
+      onAuthStateChanged,
+      signInWithEmailAndPassword,
+      createUserWithEmailAndPassword,
+      signOut,
+    };
+  })().catch(error => {
+    firebaseAuthPromise = null;
+    throw error;
+  });
+
+  return firebaseAuthPromise;
+}
+
+function setAuthScreenState(stateName) {
+  const authScreen = document.getElementById('auth-screen');
+  if (authScreen) authScreen.dataset.state = stateName;
+}
+
+function renderAuthState(user) {
+  state.authUser = user || null;
+
+  const body = document.body;
+  const authScreen = document.getElementById('auth-screen');
+  const authStatus = document.getElementById('auth-panel-status');
+  const authError = document.getElementById('auth-error');
+  const authBadge = document.getElementById('auth-user-badge');
+  const logoutBtn = document.getElementById('logout-btn');
+
+  body.classList.toggle('authenticated', Boolean(user));
+
+  if (user) {
+    if (authScreen) authScreen.dataset.state = 'signed-in';
+    if (authStatus) authStatus.textContent = user.email || 'Sesión activa';
+    if (authError) authError.textContent = '';
+    if (authBadge) {
+      authBadge.hidden = false;
+      authBadge.textContent = user.email || 'Usuario autenticado';
+    }
+    if (logoutBtn) logoutBtn.hidden = false;
+    return;
+  }
+
+  if (authScreen) authScreen.dataset.state = state.authReady ? 'ready' : 'loading';
+  if (authStatus) authStatus.textContent = state.authReady ? 'Listo para entrar' : 'Verificando sesión...';
+  if (authBadge) authBadge.hidden = true;
+  if (logoutBtn) logoutBtn.hidden = true;
+}
+
+function getAuthErrorMessage(error) {
+  const code = error?.code || '';
+  switch (code) {
+    case 'auth/invalid-email':
+      return 'El correo no es válido.';
+    case 'auth/missing-password':
+      return 'Ingresá una contraseña.';
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'La contraseña no coincide con este correo.';
+    case 'auth/user-disabled':
+      return 'Esta cuenta está deshabilitada.';
+    case 'auth/too-many-requests':
+      return 'Demasiados intentos. Probá de nuevo más tarde.';
+    case 'auth/email-already-in-use':
+      return 'Ese correo ya está en uso.';
+    case 'auth/weak-password':
+      return 'La contraseña es demasiado débil.';
+    default:
+      return error?.message || 'No se pudo iniciar sesión.';
+  }
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+
+  const emailInput = document.getElementById('auth-email');
+  const passwordInput = document.getElementById('auth-password');
+  const submitBtn = document.getElementById('auth-submit');
+  const errorEl = document.getElementById('auth-error');
+  const email = emailInput?.value?.trim() || '';
+  const password = passwordInput?.value || '';
+
+  if (!email || !password) {
+    if (errorEl) errorEl.textContent = 'Completá mail y contraseña.';
+    return;
+  }
+
+  if (errorEl) errorEl.textContent = '';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner"></span> Accediendo...';
+  }
+
+  try {
+    const firebase = await loadFirebaseAuth();
+    try {
+      await firebase.signInWithEmailAndPassword(firebase.auth, email, password);
+      toast('Sesión iniciada', 'success');
+    } catch (error) {
+      const shouldCreateAccount = error?.code === 'auth/user-not-found' || error?.code === 'auth/invalid-credential';
+      if (shouldCreateAccount) {
+        try {
+          await firebase.createUserWithEmailAndPassword(firebase.auth, email, password);
+          toast('Cuenta creada y sesión iniciada', 'success');
+        } catch (createError) {
+          if (createError?.code === 'auth/email-already-in-use') {
+            throw error;
+          }
+          throw createError;
+        }
+      } else {
+        throw error;
+      }
+    }
+
+    if (emailInput) emailInput.value = email;
+    if (passwordInput) passwordInput.value = '';
+  } catch (error) {
+    if (errorEl) errorEl.textContent = getAuthErrorMessage(error);
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Entrar o crear cuenta';
+    }
+  }
+}
+
+async function logoutFirebase() {
+  try {
+    const firebase = await loadFirebaseAuth();
+    await firebase.signOut(firebase.auth);
+    toast('Sesión cerrada', 'success');
+  } catch (error) {
+    toast(getAuthErrorMessage(error), 'error');
+  }
+}
+
+async function bootstrapFirebaseAuth() {
+  setAuthScreenState('loading');
+
+  try {
+    const firebase = await loadFirebaseAuth();
+    firebase.onAuthStateChanged(firebase.auth, user => {
+      state.authReady = true;
+      renderAuthState(user);
+    });
+  } catch (error) {
+    state.authReady = true;
+    const authStatus = document.getElementById('auth-panel-status');
+    const authError = document.getElementById('auth-error');
+    setAuthScreenState('ready');
+    if (authStatus) authStatus.textContent = 'Firebase no respondió';
+    if (authError) authError.textContent = 'No se pudo cargar Firebase Authentication.';
+  }
 }
 
 // ── Navigation ─────────────────────────────────────────────
@@ -5428,4 +5628,5 @@ function variantDownloadZip(blob, filename) {
   }, 100);
 }
 
+void bootstrapFirebaseAuth();
 init();

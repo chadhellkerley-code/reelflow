@@ -16,6 +16,60 @@
   <link rel="stylesheet" href="src/styles/animations.css" />
 </head>
 <body>
+  <section class="auth-screen" id="auth-screen" data-state="loading">
+    <div class="auth-backdrop auth-backdrop-one"></div>
+    <div class="auth-backdrop auth-backdrop-two"></div>
+    <div class="auth-shell">
+      <div class="auth-copy">
+        <div class="auth-brand">
+          <div class="auth-brand-mark">▶</div>
+          <span>ReelFlow</span>
+        </div>
+        <p class="auth-eyebrow">Acceso privado</p>
+        <h1>Entrá con tu cuenta para seguir editando y publicando.</h1>
+        <p class="auth-description">
+          El acceso ahora queda centralizado en Firebase Authentication. Si el mail no existe,
+          la cuenta se crea y la sesión queda guardada en este navegador.
+        </p>
+        <div class="auth-points">
+          <div class="auth-point">Sesión persistente entre recargas.</div>
+          <div class="auth-point">Usuarios administrados desde Firebase.</div>
+          <div class="auth-point">Logout disponible desde el panel.</div>
+        </div>
+      </div>
+
+      <div class="auth-panel">
+        <div class="auth-panel-header">
+          <span class="auth-panel-chip">Firebase Auth</span>
+          <span class="auth-panel-status" id="auth-panel-status">Verificando sesión...</span>
+        </div>
+
+        <div class="auth-loading" id="auth-loading">
+          <div class="auth-spinner"></div>
+          <p>Preparando el acceso seguro.</p>
+        </div>
+
+        <form class="auth-form" id="auth-form" onsubmit="handleAuthSubmit(event)">
+          <div class="form-group">
+            <label for="auth-email">Correo electrónico</label>
+            <input type="email" id="auth-email" class="form-input" autocomplete="email" placeholder="tu@mail.com" required />
+          </div>
+          <div class="form-group">
+            <label for="auth-password">Contraseña</label>
+            <input type="password" id="auth-password" class="form-input" autocomplete="current-password" placeholder="Escribí tu contraseña" required />
+          </div>
+          <p class="auth-note">
+            Si el correo no existe, se crea la cuenta en Firebase y quedás logueado automáticamente.
+          </p>
+          <div class="auth-error" id="auth-error" aria-live="polite"></div>
+          <button type="submit" class="btn btn-primary btn-full btn-lg" id="auth-submit">
+            Entrar o crear cuenta
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+
   <div id="app">
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
@@ -87,6 +141,10 @@
           <div class="connected-badges" id="connected-badges">
             <!-- Se llena dinámicamente -->
           </div>
+          <span class="auth-user-badge" id="auth-user-badge" hidden></span>
+          <button class="btn btn-outline btn-sm" id="logout-btn" onclick="logoutFirebase()" hidden>
+            Cerrar sesión
+          </button>
           <button class="btn btn-primary btn-sm" onclick="navigateTo('publisher')">
             + Publicar Reel
           </button>
