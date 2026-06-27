@@ -37,6 +37,7 @@ const state = {
     fontLoaded: false,
     activeStatusId: null,
   },
+  variantWakeLock: null,
 };
 
 state.settings = {
@@ -70,8 +71,9 @@ const FFMPEG_FONT_FILE = 'Inter.ttf';
 const EDITOR_FFMPEG_EXEC_TIMEOUT_MS = 25 * 60 * 1000;
 const EDITOR_FFMPEG_STALL_TIMEOUT_MS = 90 * 1000;
 const EDITOR_POSTPROCESS_TIMEOUT_MS = 15 * 1000;
-const VARIANT_UNIQUE_STAGE_TIMEOUT_MS = 6 * 60 * 1000;
-const VARIANT_UNIQUE_ANALYSIS_TIMEOUT_MS = 12 * 1000;
+const VARIANT_UNIQUE_STAGE_TIMEOUT_MS = 3 * 60 * 1000;
+const VARIANT_UNIQUE_ANALYSIS_TIMEOUT_MS = 8 * 1000;
+const VARIANT_UNIQUE_MAX_ATTEMPTS_PER_VARIANT = 2;
 const VARIANT_UNIQUE_FRAME_SIZES = [720, 540, 360];
 
 const EDITOR_FONT_OPTIONS = [
@@ -2730,6 +2732,27 @@ async function ensureVariantUniqueRuntime(statusEl = getVariantUniqueRuntimeStat
   const runtime = await loadFFmpeg(statusEl);
   updateVariantUniqueControls();
   return runtime;
+}
+
+async function acquireVariantUniqueWakeLock() {
+  if (state.variantWakeLock) return;
+  if (typeof navigator === 'undefined' || !navigator.wakeLock?.request) return;
+  try {
+    state.variantWakeLock = await navigator.wakeLock.request('screen');
+  } catch {
+    state.variantWakeLock = null;
+  }
+}
+
+async function releaseVariantUniqueWakeLock() {
+  const wakeLock = state.variantWakeLock;
+  state.variantWakeLock = null;
+  if (!wakeLock?.release) return;
+  try {
+    await wakeLock.release();
+  } catch {
+    // Ignore release failures when the browser already dropped the lock.
+  }
 }
 
 function resetEditorFFmpegRuntime() {
@@ -5438,13 +5461,14 @@ async function startVariantUniqueGeneration() {
   if (progressText) progressText.textContent = 'Preparando...';
 
   if (runtimeStatus) runtimeStatus.textContent = 'Preparando motor local...';
+  await acquireVariantUniqueWakeLock();
 
   const inputFileName = 'variant-input.mp4';
   let ffmpeg = null;
   const variants = [];
   const manifestEntries = [];
   const previousAccepted = [];
-  const maxAttemptsPerVariant = 8;
+  const maxAttemptsPerVariant = VARIANT_UNIQUE_MAX_ATTEMPTS_PER_VARIANT;
   let hasAudio = false;
 
   try {
@@ -5600,6 +5624,7 @@ async function startVariantUniqueGeneration() {
     const errorMsg = error?.message || 'Error desconocido';
     toast(`Error: ${errorMsg}`, 'error');
   } finally {
+    await releaseVariantUniqueWakeLock();
     if (ffmpeg) {
       await ffmpeg.deleteFile(inputFileName).catch(() => {});
     }
