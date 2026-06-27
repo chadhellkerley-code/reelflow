@@ -4126,6 +4126,10 @@ function resetEditorCurrentCopy(projectId) {
   if (!project) return;
   const copy = getEditorActiveCopy(project);
   if (!copy) return;
+  if (copy.output?.url) URL.revokeObjectURL(copy.output.url);
+  if (copy.overlayUrl) URL.revokeObjectURL(copy.overlayUrl);
+  if (project.zip?.url) URL.revokeObjectURL(project.zip.url);
+  project.zip = null;
   const index = copy.index;
   project.copies[project.activeCopyIndex] = {
     ...createEditorCopy(project, index),
