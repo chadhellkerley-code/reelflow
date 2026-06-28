@@ -1,4 +1,4 @@
-import { exchangeInstagramCode, readJsonSafe } from '../../../lib/instagram.js';
+import { publishInstagramReel, readJsonSafe } from '../../../lib/instagram.js';
 
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
@@ -20,10 +20,14 @@ export async function onRequestOptions() {
 
 export async function onRequestPost({ request, env }) {
   const body = await readJsonSafe(request);
-  const defaultRedirectUri = `${new URL(request.url).origin}/auth/instagram/callback`;
-  const result = await exchangeInstagramCode({
-    code: body.code,
-    redirectUri: body.redirectUri || body.redirect_uri || defaultRedirectUri,
+  const result = await publishInstagramReel({
+    igUserId: body.igUserId || body.ig_user_id,
+    accessToken: body.accessToken || body.access_token,
+    videoUrl: body.videoUrl || body.video_url,
+    caption: body.caption,
+    thumbOffset: body.thumbOffset ?? body.thumb_offset,
+    containerId: body.containerId || body.creation_id,
+    shareToFeed: body.shareToFeed ?? body.share_to_feed,
     env,
   });
 

@@ -440,7 +440,7 @@
                 class="editor-scroll-note"
                 style="margin-bottom: 16px; min-height: 22px;"
               >
-                Cargá un video base para preparar el motor local.
+                Cargá un video base para usar el worker remoto.
               </div>
 
               <div class="form-group">
@@ -558,8 +558,12 @@
                 <input type="text" class="form-input" id="backend-url" value="http://localhost:4000" placeholder="http://localhost:4000" />
               </div>
               <div class="form-group">
+                <label>Worker de variantes</label>
+                <input type="text" class="form-input" id="variant-worker-url" value="" placeholder="https://<tu-servicio-cloud-run>" />
+              </div>
+              <div class="form-group">
                 <label>Procesamiento de video</label>
-                <input type="text" class="form-input" value="Local en el navegador" readonly />
+                <input type="text" class="form-input" value="Editor local + variantes únicas remotas" readonly />
               </div>
               <button class="btn btn-primary btn-sm" onclick="saveSettings()">Guardar</button>
             </div>
@@ -576,7 +580,7 @@
               <div class="sys-info">
                 <div class="sys-row"><span>Versión</span><span>ReelFlow v1.0.0</span></div>
                 <div class="sys-row"><span>Backend</span><span class="badge badge-pending" id="backend-status">Verificando...</span></div>
-                <div class="sys-row"><span>FFmpeg.wasm</span><span class="badge badge-active" id="ffmpeg-status">Local</span></div>
+                <div class="sys-row"><span>Variantes únicas</span><span class="badge badge-active" id="ffmpeg-status">Cloud Run</span></div>
               </div>
             </div>
           </div>

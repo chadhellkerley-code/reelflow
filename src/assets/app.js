@@ -5,11 +5,27 @@
 'use strict';
 
 // ── State ─────────────────────────────────────────────────
+const DEFAULT_APP_URL = typeof window !== 'undefined' && window.location?.origin && window.location.origin !== 'null'
+  ? window.location.origin
+  : 'http://localhost:4000';
+const DEFAULT_VARIANT_WORKER_URL = typeof window !== 'undefined' && window.VARIANT_WORKER_URL
+  ? window.VARIANT_WORKER_URL
+  : DEFAULT_APP_URL;
+const DEFAULT_SETTINGS = {
+  backendUrl: DEFAULT_APP_URL,
+  variantWorkerUrl: DEFAULT_VARIANT_WORKER_URL,
+  geminiApiKey: '',
+  geminiModel: 'gemini-1.5-pro',
+  geminiImageModel: 'gemini-2.0-flash-preview-image-generation',
+  generateSegmentImages: false,
+  imageOverlayOpacity: 0.55,
+};
+
 const state = {
   currentPage: 'dashboard',
   accounts: JSON.parse(localStorage.getItem('rf_accounts') || '[]'),
   history:  JSON.parse(localStorage.getItem('rf_history')  || '[]'),
-  settings: JSON.parse(localStorage.getItem('rf_settings') || '{"backendUrl":"http://localhost:4000"}'),
+  settings: JSON.parse(localStorage.getItem('rf_settings') || JSON.stringify(DEFAULT_SETTINGS)),
   authUser: null,
   authReady: false,
   selectedVideo: null,
@@ -41,16 +57,11 @@ const state = {
 };
 
 state.settings = {
-  backendUrl: 'http://localhost:4000',
-  geminiApiKey: '',
-  geminiModel: 'gemini-1.5-pro',
-  geminiImageModel: 'gemini-2.0-flash-preview-image-generation',
-  generateSegmentImages: false,
-  imageOverlayOpacity: 0.55,
+  ...DEFAULT_SETTINGS,
   ...state.settings,
 };
 
-const PUBLIC_ORIGIN = 'https://reelflow-topaz.vercel.app';
+const PUBLIC_ORIGIN = 'http://localhost:4000';
 const FIREBASE_CONFIG = {
   apiKey: 'AIzaSyBZ3b98HVEb_PCi-28CIZ9k6IbcJyL33iM',
   authDomain: 'reelflow-1875f.firebaseapp.com',
@@ -749,7 +760,6 @@ function navigateTo(page) {
   if (page === 'editor') {
     renderEditorVideos();
     updateVariantUniqueControls();
-    if (state.editorVideos.length) void ensureVariantUniqueRuntime();
   }
   if (page === 'history')   renderHistory();
   if (page === 'settings')  renderSettings();
@@ -809,7 +819,8 @@ function saveHistory() {
   localStorage.setItem('rf_history', JSON.stringify(state.history));
 }
 function saveSettings() {
-  state.settings.backendUrl = document.getElementById('backend-url')?.value?.trim() || 'http://localhost:4000';
+  state.settings.backendUrl = document.getElementById('backend-url')?.value?.trim() || DEFAULT_APP_URL;
+  state.settings.variantWorkerUrl = document.getElementById('variant-worker-url')?.value?.trim() || DEFAULT_VARIANT_WORKER_URL;
   localStorage.setItem('rf_settings', JSON.stringify(state.settings));
   toast('Configuración guardada', 'success');
 }
@@ -1148,47 +1159,43 @@ async function publishInstagramReel(account, payload, statusEl) {
 async function uploadVideoToStorage(file, statusEl) {
   if (!file) throw new Error('Seleccioná un video primero.');
 
-  statusEl.textContent = 'Verificando configuración de Blob...';
+  statusEl.textContent = 'Verificando almacenamiento en Google Cloud...';
   const status = await fetch('/api/blob/status').then(res => res.json()).catch(() => null);
   if (!status?.configured) {
-    throw new Error('Falta configurar BLOB_READ_WRITE_TOKEN en Vercel Blob.');
+    throw new Error('Falta configurar GCS_BUCKET en el backend.');
   }
 
-  statusEl.textContent = 'Cargando cliente de subida...';
-  const { upload } = await import('https://esm.sh/@vercel/blob@2.4.0/client');
-  const pathname = `reels/${Date.now()}-${file.name.replace(/[^a-z0-9._-]/gi, '-')}`;
-  const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), 180000);
-  let blob;
-
-  try {
-    statusEl.textContent = 'Solicitando token temporal de subida...';
-    blob = await upload(pathname, file, {
-      access: 'public',
+  statusEl.textContent = 'Pidiendo URL firmada de subida...';
+  const sessionResponse = await fetch('/api/blob/upload', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      filename: file.name,
       contentType: file.type || 'video/mp4',
-      handleUploadUrl: '/api/blob/upload',
-      multipart: true,
-      clientPayload: JSON.stringify({ filename: file.name, size: file.size, type: file.type }),
-      abortSignal: abortController.signal,
-      onUploadProgress: ({ percentage }) => {
-        const progress = Math.round(percentage);
-        statusEl.textContent = progress >= 100
-          ? 'Finalizando subida del video...'
-          : `Subiendo video a storage... ${progress}%`;
-      },
-    });
-  } catch (error) {
-    if (abortController.signal.aborted) {
-      throw new Error('La subida quedó trabada. Revisá que el Blob Store sea público y esté conectado al proyecto.');
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
+      size: file.size,
+    }),
+  });
+  const session = await sessionResponse.json().catch(() => null);
+
+  if (!sessionResponse.ok || !session?.ok || !session?.uploadUrl) {
+    throw new Error(session?.error || 'No se pudo iniciar la subida al storage.');
   }
 
-  if (!blob?.url) throw new Error('No se pudo obtener la URL pública del video.');
+  statusEl.textContent = 'Subiendo video a Google Cloud Storage...';
+  const uploadResponse = await fetch(session.uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'content-type': file.type || session.contentType || 'video/mp4',
+    },
+    body: file,
+  });
+
+  if (!uploadResponse.ok) {
+    throw new Error(`No se pudo subir el video (${uploadResponse.status}).`);
+  }
+
   statusEl.textContent = 'Video subido. Preparando publicación...';
-  return blob.url;
+  return session.downloadUrl || session.url;
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -2685,34 +2692,34 @@ function getVariantUniqueRuntimeStatusEl() {
   return document.getElementById('variant-unique-runtime-status');
 }
 
+function getVariantWorkerUrl() {
+  return String(window.VARIANT_WORKER_URL || state.settings.variantWorkerUrl || '').trim().replace(/\/+$/, '');
+}
+
 function updateVariantUniqueControls() {
   const button = document.getElementById('variant-unique-btn');
   const statusEl = getVariantUniqueRuntimeStatusEl();
   const hasVideo = Boolean(state.editorVideos?.length);
-  const runtimeReady = Boolean(state.ffmpeg.loaded && state.ffmpeg.instance);
-  const runtimeLoading = Boolean(state.ffmpeg.loading);
+  const workerUrl = getVariantWorkerUrl();
+  const workerReady = Boolean(workerUrl);
 
   if (button) {
-    button.disabled = !hasVideo || runtimeLoading || !runtimeReady;
-    button.textContent = runtimeLoading
-      ? 'Preparando motor local...'
-      : '⚡ Generar Variantes Únicas';
+    button.disabled = !hasVideo || !workerReady;
+    button.textContent = workerReady
+      ? '⚡ Generar Variantes Únicas'
+      : 'Configurar worker remoto';
   }
 
   if (!statusEl) return;
   if (!hasVideo) {
-    statusEl.textContent = 'Cargá un video base para preparar el motor local.';
+    statusEl.textContent = 'Cargá un video base para usar el worker remoto.';
     return;
   }
-  if (runtimeLoading) {
-    statusEl.textContent = 'Preparando motor local...';
+  if (!workerReady) {
+    statusEl.textContent = 'Configurá VARIANT_WORKER_URL para habilitar Cloud Run.';
     return;
   }
-  if (runtimeReady) {
-    statusEl.textContent = 'Motor local listo. Ya podés generar variantes.';
-    return;
-  }
-  statusEl.textContent = 'Preparando motor local cuando cargues el video.';
+  statusEl.textContent = 'Worker remoto listo. Ya podés generar variantes.';
 }
 
 async function ensureVariantUniqueRuntime(statusEl = getVariantUniqueRuntimeStatusEl()) {
@@ -2722,13 +2729,13 @@ async function ensureVariantUniqueRuntime(statusEl = getVariantUniqueRuntimeStat
   }
 
   if (state.ffmpeg.loading) {
-    if (statusEl) statusEl.textContent = 'Preparando motor local...';
+    if (statusEl) statusEl.textContent = 'Preparando worker remoto...';
     while (state.ffmpeg.loading) await sleep(250);
     updateVariantUniqueControls();
     return state.ffmpeg;
   }
 
-  if (statusEl) statusEl.textContent = 'Preparando motor local...';
+  if (statusEl) statusEl.textContent = 'Preparando worker remoto...';
   const runtime = await loadFFmpeg(statusEl);
   updateVariantUniqueControls();
   return runtime;
@@ -3651,7 +3658,7 @@ function handleEditorUpload(event) {
   state.editorVideos = [file];
   event.target.value = '';
   updateEditorCounters();
-  void ensureVariantUniqueRuntime();
+  updateVariantUniqueControls();
   toast('Video base cargado', 'success');
 }
 
@@ -5329,6 +5336,7 @@ document.getElementById('history-filter').addEventListener('change', renderHisto
 // ═══════════════════════════════════════════════════════════
 function renderSettings() {
   if (state.settings.backendUrl) document.getElementById('backend-url').value = state.settings.backendUrl;
+  if (state.settings.variantWorkerUrl) document.getElementById('variant-worker-url').value = state.settings.variantWorkerUrl;
 
   // Tokens list
   const list = document.getElementById('tokens-list');
@@ -5434,6 +5442,37 @@ function init() {
   navigateTo('dashboard');
 }
 
+async function fetchVariantWorkerJson(url, options = {}) {
+  const response = await fetch(url, options);
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || payload?.message || `Worker request failed (${response.status})`);
+  }
+  return payload;
+}
+
+async function pollVariantUniqueJob(workerUrl, jobId, onUpdate) {
+  while (true) {
+    const job = await fetchVariantWorkerJson(`${workerUrl}/jobs/${jobId}`);
+    onUpdate?.(job);
+    if (job.status === 'completed' || job.status === 'failed') {
+      return job;
+    }
+    await sleep(2000);
+  }
+}
+
+async function downloadVariantUniqueZip(workerUrl, jobId) {
+  const response = await fetch(`${workerUrl}/jobs/${jobId}/download`);
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error || `No se pudo descargar el ZIP (${response.status})`);
+  }
+  return new Blob([await response.arrayBuffer()], {
+    type: response.headers.get('content-type') || 'application/zip',
+  });
+}
+
 async function startVariantUniqueGeneration() {
   const videoFile = state.editorVideos?.[0];
   if (!videoFile) {
@@ -5453,6 +5492,12 @@ async function startVariantUniqueGeneration() {
   const progressBar = document.getElementById('variant-unique-progress-bar');
   const progressText = document.getElementById('variant-unique-progress-text');
   const successMessage = document.getElementById('variant-unique-success');
+  const workerUrl = getVariantWorkerUrl();
+
+  if (!workerUrl) {
+    toast('Configurá VARIANT_WORKER_URL para usar el worker remoto.', 'error');
+    return;
+  }
 
   if (btnGenerate) btnGenerate.disabled = true;
   if (progressContainer) progressContainer.style.display = 'block';
@@ -5460,174 +5505,61 @@ async function startVariantUniqueGeneration() {
   if (progressBar) progressBar.style.width = '0%';
   if (progressText) progressText.textContent = 'Preparando...';
 
-  if (runtimeStatus) runtimeStatus.textContent = 'Preparando motor local...';
+  if (runtimeStatus) runtimeStatus.textContent = 'Inicializando job remoto...';
   await acquireVariantUniqueWakeLock();
 
-  const inputFileName = 'variant-input.mp4';
-  let ffmpeg = null;
-  const variants = [];
-  const manifestEntries = [];
-  const previousAccepted = [];
-  const maxAttemptsPerVariant = VARIANT_UNIQUE_MAX_ATTEMPTS_PER_VARIANT;
-  let hasAudio = false;
-
   try {
-    let ffmpegRuntime = await ensureVariantUniqueRuntime(runtimeStatus);
-    ffmpeg = ffmpegRuntime.instance || ffmpegRuntime;
-    const { VariantTransformer } = await import('/src/engine/variantTransformer.js');
-    const metadata = await getBrowserVideoMetadata(videoFile);
-    const inputBuffer = await videoFile.arrayBuffer();
-    await ffmpeg.writeFile(inputFileName, new Uint8Array(inputBuffer));
-    hasAudio = await probeHasAudio(ffmpeg, inputFileName, `variant-unique-audio-${Date.now()}.txt`).catch(() => false);
-    if (runtimeStatus) runtimeStatus.textContent = 'Motor local listo. Generando variantes...';
+    if (runtimeStatus) runtimeStatus.textContent = 'Subiendo video base a Google Cloud Storage...';
+    if (progressText) progressText.textContent = 'Subiendo video base y generando ZIP...';
+    if (progressBar) progressBar.style.width = '20%';
 
-    for (let i = 1; i <= variantCount; i += 1) {
-      const variantNum = String(i).padStart(3, '0');
-      const outputFileName = `variant-${variantNum}.mp4`;
-      let acceptedVariant = null;
-      let acceptedTransforms = null;
-      let acceptedSignature = null;
-      const stageFrameSizes = VARIANT_UNIQUE_FRAME_SIZES
-        .map(maxSide => VariantTransformer.resolveFrameSize(metadata, maxSide))
-        .filter(Boolean);
+    const sourceUrl = await uploadVideoToStorage(videoFile, runtimeStatus);
 
-      for (let attempt = 0; attempt < maxAttemptsPerVariant; attempt += 1) {
-        const transforms = VariantTransformer.generateRandomTransforms(i, attempt);
-        let attemptSucceeded = false;
+    if (runtimeStatus) runtimeStatus.textContent = 'Enviando referencia al worker remoto...';
+    if (progressText) progressText.textContent = 'Procesando variantes en Cloud Run...';
+    if (progressBar) progressBar.style.width = '35%';
 
-        for (const [frameIndex, frameSize] of stageFrameSizes.entries()) {
-          const stageHasAudio = hasAudio && frameIndex === 0;
-          const ffmpegArgs = VariantTransformer.buildFFmpegCommand(
-            inputFileName,
-            outputFileName,
-            transforms,
-            stageHasAudio,
-            frameSize,
-          );
+    const response = await fetch(`${workerUrl}/jobs/variant-unique`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sourceUrl,
+        sourceName: videoFile.name,
+        cantidadVariantes: String(variantCount),
+        config: {
+          frameSizes: VARIANT_UNIQUE_FRAME_SIZES,
+          maxAttemptsPerVariant: VARIANT_UNIQUE_MAX_ATTEMPTS_PER_VARIANT,
+        },
+      }),
+    });
 
-          if (progressText) {
-            progressText.textContent = `Variante ${i}/${variantCount} (${transforms.speed.toFixed(2)}x)`;
-          }
-
-          try {
-            await withTimeout(
-              execEditorFFmpegChecked(
-                ffmpegRuntime,
-                ffmpegArgs,
-                pct => {
-                  const overallPct = ((i - 1 + (pct / 100)) / variantCount) * 100;
-                  if (progressBar) progressBar.style.width = `${Math.min(overallPct, 95)}%`;
-                  if (progressText) {
-                    progressText.textContent = `Variante ${i}/${variantCount} (${transforms.speed.toFixed(2)}x)`;
-                  }
-                },
-                `Error procesando variante ${variantNum}`,
-              ),
-              VARIANT_UNIQUE_STAGE_TIMEOUT_MS,
-              `La variante ${variantNum} tardó demasiado y fue reiniciada.`,
-            );
-          } catch (error) {
-            if (ffmpeg?.terminate) {
-              try {
-                ffmpeg.terminate();
-              } catch {
-                // ignore
-              }
-            }
-            resetEditorFFmpegRuntime();
-            ffmpegRuntime = await ensureVariantUniqueRuntime(runtimeStatus);
-            ffmpeg = ffmpegRuntime.instance || ffmpegRuntime;
-            await ffmpeg.writeFile(inputFileName, new Uint8Array(inputBuffer));
-            hasAudio = await probeHasAudio(ffmpeg, inputFileName, `variant-unique-audio-${Date.now()}.txt`).catch(() => false);
-            continue;
-          }
-
-          const outputData = await withTimeout(
-            ffmpeg.readFile(outputFileName),
-            VARIANT_UNIQUE_ANALYSIS_TIMEOUT_MS,
-            'No se pudo leer la variante generada a tiempo.',
-          ).catch(() => null);
-          if (!outputData) {
-            await ffmpeg.deleteFile(outputFileName).catch(() => {});
-            continue;
-          }
-
-          const blob = new Blob([outputData], { type: 'video/mp4' });
-          const outputFile = new File([blob], outputFileName, { type: 'video/mp4' });
-          const frame = await withTimeout(
-            loadVideoFrame(outputFile, 0.45),
-            VARIANT_UNIQUE_ANALYSIS_TIMEOUT_MS,
-            'No se pudo analizar el fotograma a tiempo.',
-          ).catch(() => null);
-          const hash = frame ? computePhashFromImageData(frame) : [];
-          const audioSignature = stageHasAudio
-            ? await withTimeout(
-                computeAudioSignature(outputFile),
-                VARIANT_UNIQUE_ANALYSIS_TIMEOUT_MS,
-                'No se pudo analizar el audio a tiempo.',
-              ).catch(() => [])
-            : [];
-          const signature = { hash, audioSignature };
-
-          if (!estimateSimilarity(signature, previousAccepted)) {
-            await ffmpeg.deleteFile(outputFileName).catch(() => {});
-            continue;
-          }
-
-          acceptedVariant = { name: outputFileName, blob };
-          acceptedTransforms = transforms;
-          acceptedSignature = signature;
-          previousAccepted.push(signature);
-          variants.push(acceptedVariant);
-          manifestEntries.push({
-            filename: outputFileName,
-            size_mb: (blob.size / 1024 / 1024).toFixed(2),
-            transforms: acceptedTransforms,
-            phash: hash,
-            audio_signature: audioSignature,
-            attempts: attempt + 1,
-            stage_frame: frameSize,
-            unique_check_passed: true,
-          });
-          await ffmpeg.deleteFile(outputFileName).catch(() => {});
-          attemptSucceeded = true;
-          break;
-        }
-
-        if (attemptSucceeded) break;
-      }
-
-      if (!acceptedVariant || !acceptedTransforms || !acceptedSignature) {
-        throw new Error(`No se pudo generar la variante ${variantNum} sin duplicados.`);
-      }
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(payload?.error || payload?.message || `No se pudo generar el ZIP (${response.status})`);
     }
 
+    if (runtimeStatus) runtimeStatus.textContent = 'Descargando ZIP generado en Cloud Run...';
+    if (progressText) progressText.textContent = 'Descargando ZIP...';
     if (progressBar) progressBar.style.width = '95%';
-    if (progressText) progressText.textContent = 'Empaquetando ZIP...';
 
-    const manifestJson = JSON.stringify({
-      generated_at: new Date().toISOString(),
-      original_file: videoFile.name,
-      total_variants: variants.length,
-      variants: manifestEntries,
-    }, null, 2);
+    const zipBlob = new Blob([await response.arrayBuffer()], {
+      type: response.headers.get('content-type') || 'application/zip',
+    });
 
-    const finalZip = await variantBuildZipWithManifest(variants, manifestJson);
-    variantDownloadZip(finalZip, 'variantes-unicas.zip');
+    if (progressText) progressText.textContent = 'Descargando ZIP...';
+    if (runtimeStatus) runtimeStatus.textContent = 'Finalizando descarga...';
+    variantDownloadZip(zipBlob, 'variantes-unicas.zip');
 
     if (progressContainer) progressContainer.style.display = 'none';
     if (progressBar) progressBar.style.width = '0%';
     if (successMessage) successMessage.style.display = 'block';
 
-    toast(`✓ ${variants.length} variantes generadas y descargadas`, 'success');
+    toast('✓ Variantes generadas y descargadas', 'success');
   } catch (error) {
     const errorMsg = error?.message || 'Error desconocido';
     toast(`Error: ${errorMsg}`, 'error');
   } finally {
     await releaseVariantUniqueWakeLock();
-    if (ffmpeg) {
-      await ffmpeg.deleteFile(inputFileName).catch(() => {});
-    }
     if (btnGenerate) btnGenerate.disabled = false;
     state.ffmpeg.activeStatusId = null;
     updateVariantUniqueControls();

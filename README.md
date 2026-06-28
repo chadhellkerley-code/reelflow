@@ -1,107 +1,132 @@
-# ReelFlow — Frontend Scaffold
+# ReelFlow
 
-Panel de publicación y edición de reels para Instagram con Meta API.
+Panel de publicación, edición y generación de reels.
 
-## Estructura del proyecto
+Este repo ahora está listo para desplegarse en **un solo servicio de Cloud Run**:
 
-```
-reelflow/
-├── index.html                  ← Punto de entrada principal
-├── README.md
-└── src/
-    ├── assets/
-    │   └── app.js              ← Toda la lógica frontend
-    └── styles/
-        ├── variables.css       ← Design tokens / CSS variables
-        ├── base.css            ← Reset y tipografía
-        ├── layout.css          ← Sidebar, topbar, grillas
-        ├── components.css      ← Botones, cards, forms, modals
-        ├── pages.css           ← Estilos específicos por página
-        └── animations.css      ← Keyframes y animaciones
-```
+- `server.js` sirve el frontend estático.
+- `server.js` expone `/api/instagram/*` para OAuth y publicación.
+- `server.js` expone `/api/blob/*` pero usando **Google Cloud Storage con URL firmada**.
+- `server.js` monta el worker de variantes únicas desde `variant-worker/` en la misma app.
 
-## Páginas incluidas
+## Archivos clave
 
-- **Dashboard** — Estadísticas y resumen de actividad
-- **Cuentas** — Conexión OAuth de Instagram
-- **Publicar** — Subida y publicación de reels
-- **Editor** — Video base + hasta 15 videos de referencia seleccionables
-- **Historial** — Log de publicaciones y formatos
-- **Configuración** — Backend URL, API keys, tokens
+- `Dockerfile`: build del contenedor para Cloud Run.
+- `server.js`: servidor principal para frontend, API y worker.
+- `gcs-cors.json`: configuración CORS para que el navegador suba videos directo a GCS.
+- `index.html`: entrada del panel.
+- `src/assets/app.js`: lógica frontend.
+- `variant-worker/`: worker integrado para `POST /jobs/variant-unique`.
 
-## Variables de entorno (para el backend)
+## Variables de entorno
 
-Para Vercel, configurar estas variables en:
-`Project > Settings > Environment Variables`.
+Estas son las variables que usa el despliegue en Google Cloud:
 
-```env
-INSTAGRAM_APP_ID=1428803625601557
-INSTAGRAM_APP_SECRET=
-BACKEND_URL=https://reelflow-topaz.vercel.app
-```
+- `INSTAGRAM_APP_SECRET`: secreto de Meta/Instagram para el intercambio OAuth.
+- `INSTAGRAM_APP_ID`: opcional. Si no lo seteás, se usa el ID hardcodeado existente.
+- `GCS_BUCKET`: nombre del bucket de Google Cloud Storage donde se generan las URLs firmadas.
+- `GCS_SIGNED_URL_TTL_MINUTES`: opcional. TTL de las URLs firmadas. Default `60`.
+- `TMP_DIR`: opcional. Directorio temporal para el worker integrado. Default `/tmp/reelflow`.
+- `MAX_PARALLEL_JOBS`: opcional. Límite interno del scheduler del worker. Default `0` para usar la cantidad de CPU disponible.
+- `MAX_VARIANTS`: opcional. Máximo de variantes admitidas por job. Default `100`.
+- `FFMPEG_BIN`: opcional. Binario alternativo de `ffmpeg`.
+- `FFPROBE_BIN`: opcional. Binario alternativo de `ffprobe`.
+- `META_GRAPH_API_VERSION`: opcional. Versión del Graph API de Meta usada para publicar en Instagram. Default `v21.0`.
+- `VARIANT_WORKER_URL`: opcional solo si separás el worker en otro servicio. En este contenedor queda en el mismo origen.
+- `PORT`: lo define Cloud Run. Default interno `8080`.
 
-## Callback URLs para registrar en las apps
+Si seguís usando Vercel como frontend, agregá esta variable en Vercel:
 
-```
-Instagram: https://reelflow-topaz.vercel.app/auth/instagram/callback
-Data deletion: https://reelflow-topaz.vercel.app/eliminacion-datos.html
-```
+- `CLOUD_RUN_BASE_URL`: URL pública de tu servicio de Cloud Run, por ejemplo `https://reelflow-xxxxx-uc.a.run.app`
 
-## Uso sin backend
+## URLs de callback
 
-El frontend funciona de forma standalone para desarrollo visual.
-Los tokens y cuentas se guardan en `localStorage`.
-Las publicaciones y generaciones simulan el flujo pero necesitan el backend para ejecutarse realmente.
+Registrá estas URLs en Meta/Instagram:
 
-## Cloudflare Pages Functions
+- Callback OAuth: `https://TU-SERVICIO-CLOUD-RUN/auth/instagram/callback`
+- Eliminación de datos: `https://TU-SERVICIO-CLOUD-RUN/eliminacion-datos.html`
 
-La ruta `functions/api/instagram/exchange.js` crea el endpoint:
+## Despliegue en Google Cloud
 
-```
-/api/instagram/exchange
+### 1. Variables locales
+
+```bash
+PROJECT_ID="tu-proyecto"
+REGION="us-central1"
+SERVICE_NAME="reelflow"
+BUCKET_NAME="tu-bucket-reelflow"
+SA_NAME="reelflow-runner"
+SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 ```
 
-Ese endpoint recibe el `code` de Instagram, usa `INSTAGRAM_APP_SECRET` de forma privada y devuelve los datos de la cuenta conectada.
+### 2. Habilitar APIs
 
-## Vercel Functions
-
-La ruta `api/instagram/exchange.js` crea el mismo endpoint para Vercel:
-
-```
-/api/instagram/exchange
+```bash
+gcloud config set project "$PROJECT_ID"
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com storage.googleapis.com iamcredentials.googleapis.com
 ```
 
-En Vercel, no pongas secretos en archivos del proyecto. Guardalos como Environment Variables.
+### 3. Crear bucket y CORS
 
-La ruta `api/instagram/publish.js` publica un Reel desde una URL pública de video:
-
-```
-/api/instagram/publish
-```
-
-La ruta `api/blob/upload.js` habilita uploads directos de video a Vercel Blob:
-
-```
-/api/blob/upload
+```bash
+gcloud storage buckets create "gs://$BUCKET_NAME" --location="$REGION" --uniform-bucket-level-access
+gcloud storage buckets update "gs://$BUCKET_NAME" --cors-file=gcs-cors.json
 ```
 
-Para usar uploads, el proyecto de Vercel necesita la variable:
+### 4. Crear service account y permisos
 
-```env
-BLOB_READ_WRITE_TOKEN=
+```bash
+gcloud iam service-accounts create "$SA_NAME" --display-name="ReelFlow Cloud Run"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:$SA_EMAIL" --role="roles/storage.objectUser"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:$SA_EMAIL" --role="roles/iam.serviceAccountTokenCreator"
 ```
 
-Diagnostico rapido:
+### 5. Desplegar
 
+```bash
+gcloud run deploy "$SERVICE_NAME" \
+  --source . \
+  --region "$REGION" \
+  --service-account "$SA_EMAIL" \
+  --allow-unauthenticated \
+  --cpu=2 \
+  --memory=4Gi \
+  --timeout=3600 \
+  --concurrency=1 \
+  --set-env-vars "GCS_BUCKET=$BUCKET_NAME,GCS_SIGNED_URL_TTL_MINUTES=60,MAX_PARALLEL_JOBS=1,MAX_VARIANTS=100,INSTAGRAM_APP_SECRET=TU_INSTAGRAM_APP_SECRET"
 ```
-/api/blob/status
-/api/blob/test
-```
 
-## Stack recomendado para el backend
+Si querés fijar tu `INSTAGRAM_APP_ID`, agregalo al `--set-env-vars`.
 
-- **Runtime:** Node.js + Express
-- **Video:** FFmpeg.wasm en el navegador para procesar variantes locales
-- **Storage:** AWS S3 / Cloudflare R2
-- **DB:** PostgreSQL (cuentas, tokens, historial)
-- **Deploy:** Railway / Render
+## Flujo de subida
+
+El frontend ya no envía videos grandes en `multipart/form-data` a Cloud Run.
+
+1. Pide a `POST /api/blob/upload` una URL firmada.
+2. Sube el video directo a Google Cloud Storage con `PUT`.
+3. Para publicar o generar variantes, Cloud Run recibe solo la URL firmada o una referencia equivalente.
+
+En otras palabras: para videos de `500 MB` o `1 GB`, el archivo no atraviesa Cloud Run como payload multipart. Solo viaja al bucket y luego el servicio trabaja sobre la referencia.
+
+## Nota sobre compatibilidad
+
+- Los handlers de `api/` actúan como proxy desde Vercel hacia Cloud Run cuando definís `CLOUD_RUN_BASE_URL`.
+- El worker de FFmpeg ya no requiere un despliegue separado si corrés este contenedor único en Cloud Run.
+- `vercel.json` ya reescribe `/health` y `/jobs/*` para pasar por esos proxies.
+
+## Confirmación de archivos
+
+Para este deploy no falta ningún archivo adicional:
+
+- `Dockerfile`
+- `server.js`
+- `gcs-cors.json`
+- `index.html`
+- `src/`
+- `vendor/`
+- `auth/`
+- `api/`
+- `variant-worker/`
+- `vercel.json`
+
+Con eso, el proyecto queda listo para `gcloud run deploy`.

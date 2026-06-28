@@ -3,6 +3,18 @@
     {
       "source": "/auth/instagram/callback",
       "destination": "/auth/instagram/callback/index.html"
+    },
+    {
+      "source": "/health",
+      "destination": "/api/health"
+    },
+    {
+      "source": "/jobs",
+      "destination": "/api/jobs"
+    },
+    {
+      "source": "/jobs/:path*",
+      "destination": "/api/jobs/:path*"
     }
   ]
 }

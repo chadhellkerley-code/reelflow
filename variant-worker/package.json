@@ -1,20 +1,13 @@
 {
-  "name": "reelflow",
-  "version": "1.0.0",
+  "name": "variant-worker",
   "private": true,
   "type": "module",
+  "main": "server.js",
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js"
   },
-  "engines": {
-    "node": ">=20"
-  },
   "dependencies": {
-    "@google-cloud/storage": "^7.16.0",
-    "@ffmpeg/ffmpeg": "^0.12.15",
-    "@ffmpeg/util": "^0.12.2",
-    "@vercel/blob": "^2.4.0",
     "archiver": "^7.0.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",

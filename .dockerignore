@@ -1,0 +1,11 @@
+.git
+.gitignore
+.playwright-mcp
+.env
+.env.local
+.env.*.local
+node_modules
+variant-worker/node_modules
+variant-worker/temp
+**/*.zip
+**/*.log
