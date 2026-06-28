@@ -4,3 +4,5 @@
 .vercel
 node_modules
 .playwright-mcp
+variant-worker/temp/*
+!variant-worker/temp/.gitkeep
