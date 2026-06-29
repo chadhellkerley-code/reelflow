@@ -5,8 +5,12 @@
 'use strict';
 
 // ── State ─────────────────────────────────────────────────
+const CLOUD_RUN_BASE_URL = 'https://reelflow-797266507709.europe-west1.run.app';
+const IS_LOCALHOST = typeof window !== 'undefined'
+  && window.location?.hostname
+  && ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
 const DEFAULT_APP_URL = typeof window !== 'undefined' && window.location?.origin && window.location.origin !== 'null'
-  ? window.location.origin
+  ? (IS_LOCALHOST ? window.location.origin : CLOUD_RUN_BASE_URL)
   : 'http://localhost:4000';
 const DEFAULT_VARIANT_WORKER_URL = typeof window !== 'undefined' && window.VARIANT_WORKER_URL
   ? window.VARIANT_WORKER_URL
@@ -60,6 +64,13 @@ state.settings = {
   ...DEFAULT_SETTINGS,
   ...state.settings,
 };
+
+if (!state.settings.backendUrl || /localhost|127\.0\.0\.1|::1/i.test(state.settings.backendUrl) || state.settings.backendUrl === window.location.origin) {
+  state.settings.backendUrl = DEFAULT_APP_URL;
+}
+if (!state.settings.variantWorkerUrl || /localhost|127\.0\.0\.1|::1/i.test(state.settings.variantWorkerUrl) || state.settings.variantWorkerUrl === window.location.origin) {
+  state.settings.variantWorkerUrl = DEFAULT_VARIANT_WORKER_URL;
+}
 
 const PUBLIC_ORIGIN = 'http://localhost:4000';
 const FIREBASE_CONFIG = {
@@ -525,6 +536,14 @@ function getPublicOrigin() {
 
 function getInstagramCallbackUrl() {
   return `${getPublicOrigin()}/auth/instagram/callback`;
+}
+
+function getBackendUrl() {
+  return String(window.BACKEND_URL || state.settings.backendUrl || DEFAULT_APP_URL).trim().replace(/\/+$/, '');
+}
+
+function buildBackendApiUrl(pathname) {
+  return new URL(pathname, `${getBackendUrl()}/`).toString();
 }
 
 // ── Firebase Auth ─────────────────────────────────────────
@@ -1126,7 +1145,7 @@ async function publishInstagramReel(account, payload, statusEl) {
       ? `Instagram sigue procesando el video... intento ${attempt}/6`
       : `Creando publicación en ${account.username}...`;
 
-    const response = await fetch('/api/instagram/publish', {
+    const response = await fetch(buildBackendApiUrl('/api/instagram/publish'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -1160,13 +1179,13 @@ async function uploadVideoToStorage(file, statusEl) {
   if (!file) throw new Error('Seleccioná un video primero.');
 
   statusEl.textContent = 'Verificando almacenamiento en Google Cloud...';
-  const status = await fetch('/api/blob/status').then(res => res.json()).catch(() => null);
+  const status = await fetch(buildBackendApiUrl('/api/blob/status')).then(res => res.json()).catch(() => null);
   if (!status?.configured) {
     throw new Error('Falta configurar GCS_BUCKET en el backend.');
   }
 
   statusEl.textContent = 'Pidiendo URL firmada de subida...';
-  const sessionResponse = await fetch('/api/blob/upload', {
+  const sessionResponse = await fetch(buildBackendApiUrl('/api/blob/upload'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -5361,7 +5380,7 @@ function renderSettings() {
 async function checkBackend() {
   const el = document.getElementById('backend-status');
   try {
-    const res = await fetch(`${state.settings.backendUrl}/health`, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(buildBackendApiUrl('/health'), { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
       el.className = 'badge badge-active';
       el.textContent = 'Conectado';

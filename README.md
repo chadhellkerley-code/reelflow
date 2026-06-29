@@ -35,7 +35,7 @@ Estas son las variables que usa el despliegue en Google Cloud:
 - `VARIANT_WORKER_URL`: opcional solo si separás el worker en otro servicio. En este contenedor queda en el mismo origen.
 - `PORT`: lo define Cloud Run. Default interno `8080`.
 
-Si seguís usando Vercel como frontend, agregá esta variable en Vercel:
+Compatibilidad opcional con los handlers proxy de Vercel:
 
 - `CLOUD_RUN_BASE_URL`: URL pública de tu servicio de Cloud Run, por ejemplo `https://reelflow-xxxxx-uc.a.run.app`
 
@@ -110,7 +110,7 @@ En otras palabras: para videos de `500 MB` o `1 GB`, el archivo no atraviesa Clo
 
 ## Nota sobre compatibilidad
 
-- Los handlers de `api/` actúan como proxy desde Vercel hacia Cloud Run cuando definís `CLOUD_RUN_BASE_URL`.
+- El frontend puede hablar directo con Cloud Run desde Vercel; los handlers de `api/` quedan como fallback si definís `CLOUD_RUN_BASE_URL`.
 - El worker de FFmpeg ya no requiere un despliegue separado si corrés este contenedor único en Cloud Run.
 - `vercel.json` ya reescribe `/health` y `/jobs/*` para pasar por esos proxies.
 

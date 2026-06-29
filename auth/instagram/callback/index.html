@@ -37,6 +37,7 @@
   </main>
 
   <script>
+    const API_BASE_URL = 'https://reelflow-797266507709.europe-west1.run.app';
     const result = document.getElementById('callback-result');
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
@@ -89,7 +90,7 @@
         <p>El redirect funciona. Estamos cambiando el codigo por un token desde el backend seguro...</p>
       `;
 
-      const response = await fetch('/api/instagram/exchange', {
+      const response = await fetch(new URL('/api/instagram/exchange', `${API_BASE_URL}/`).toString(), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ code, redirectUri: callbackUrl })
