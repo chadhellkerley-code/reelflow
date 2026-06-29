@@ -32,8 +32,8 @@ export class VariantTransformer {
     const seed = (Number(index) || 0) * 7919 + (Number(attempt) || 0) * 104729;
 
     return {
-      crop: Math.floor(this._seededRandom(seed, 97, 101)),
-      zoom: this._toFixed(1 + this._seededRandom(seed + 1, 0, 0.02), 3),
+      crop: Math.floor(this._seededRandom(seed, 99, 101)),
+      zoom: this._toFixed(1 + this._seededRandom(seed + 1, 0, 0.003), 3),
       speed: this._toFixed(1 + this._seededRandom(seed + 2, 0, 0.03), 3),
       silenceMs: Math.floor(this._seededRandom(seed + 3, 80, 151)),
       gamma: this._toFixed(0.98 + this._seededRandom(seed + 4, 0, 0.02), 2),
@@ -79,11 +79,11 @@ export class VariantTransformer {
     const targetHeight = Number.isFinite(Number(targetFrame?.height)) ? Number(targetFrame.height) : 0;
 
     const videoFilters = [
-      `crop=w='trunc(iw*${cropRatio} / 2) * 2':h='trunc(ih*${cropRatio} / 2) * 2':x='(iw-ow)/2':y='(ih-oh)/2'`,
-      `scale=w='trunc(iw*${zoom} / 2) * 2':h='trunc(ih*${zoom} / 2) * 2'`,
       targetWidth && targetHeight
         ? `crop=${targetWidth}:${targetHeight}:(in_w-${targetWidth})/2:(in_h-${targetHeight})/2`
         : 'crop=iw:ih:0:0',
+      `crop=w='trunc(iw*${cropRatio} / 2) * 2':h='trunc(ih*${cropRatio} / 2) * 2':x='(iw-ow)/2':y='(ih-oh)/2'`,
+      `scale=w='trunc(iw*${zoom} / 2) * 2':h='trunc(ih*${zoom} / 2) * 2'`,
       `eq=gamma=${gamma}`,
       `setpts=PTS/${speed}`,
     ];
