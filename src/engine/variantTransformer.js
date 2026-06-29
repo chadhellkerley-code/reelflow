@@ -4,6 +4,39 @@
  * Genera variantes de un video con transformaciones mínimas e imperceptibles.
  * Cada variante usa un combo reproducible de crop, zoom, speed, silencio inicial y gamma.
  */
+
+const VARIANT_PRESETS = Object.freeze([
+  { crop: 100, zoom: 1.000, speed: 0.920, silenceMs: 0, gamma: 0.96, panX: -0.08, panY: -0.08 },
+  { crop: 99, zoom: 1.008, speed: 0.940, silenceMs: 20, gamma: 0.98, panX: -0.04, panY: -0.08 },
+  { crop: 98, zoom: 1.016, speed: 0.960, silenceMs: 40, gamma: 1.00, panX: 0.00, panY: -0.08 },
+  { crop: 97, zoom: 1.024, speed: 0.980, silenceMs: 60, gamma: 1.02, panX: 0.04, panY: -0.08 },
+  { crop: 96, zoom: 1.032, speed: 1.000, silenceMs: 80, gamma: 1.04, panX: 0.08, panY: -0.08 },
+  { crop: 95, zoom: 1.040, speed: 1.020, silenceMs: 100, gamma: 1.06, panX: 0.08, panY: -0.04 },
+  { crop: 100, zoom: 1.004, speed: 0.930, silenceMs: 16, gamma: 0.97, panX: -0.08, panY: -0.04 },
+  { crop: 99, zoom: 1.012, speed: 0.950, silenceMs: 36, gamma: 0.99, panX: -0.04, panY: -0.04 },
+  { crop: 98, zoom: 1.020, speed: 0.970, silenceMs: 56, gamma: 1.01, panX: 0.00, panY: -0.04 },
+  { crop: 97, zoom: 1.028, speed: 0.990, silenceMs: 76, gamma: 1.03, panX: 0.04, panY: -0.04 },
+  { crop: 96, zoom: 1.036, speed: 1.010, silenceMs: 96, gamma: 1.05, panX: 0.08, panY: -0.04 },
+  { crop: 95, zoom: 1.044, speed: 1.030, silenceMs: 116, gamma: 1.06, panX: 0.08, panY: 0.00 },
+  { crop: 100, zoom: 1.006, speed: 0.940, silenceMs: 12, gamma: 0.98, panX: -0.08, panY: 0.00 },
+  { crop: 99, zoom: 1.014, speed: 0.960, silenceMs: 32, gamma: 1.00, panX: -0.04, panY: 0.00 },
+  { crop: 98, zoom: 1.022, speed: 0.980, silenceMs: 52, gamma: 1.02, panX: 0.00, panY: 0.00 },
+  { crop: 97, zoom: 1.030, speed: 1.000, silenceMs: 72, gamma: 1.04, panX: 0.04, panY: 0.00 },
+  { crop: 96, zoom: 1.038, speed: 1.020, silenceMs: 92, gamma: 1.06, panX: 0.08, panY: 0.00 },
+  { crop: 95, zoom: 1.046, speed: 1.040, silenceMs: 112, gamma: 1.05, panX: 0.08, panY: 0.04 },
+  { crop: 100, zoom: 1.008, speed: 0.950, silenceMs: 24, gamma: 0.97, panX: -0.08, panY: 0.04 },
+  { crop: 99, zoom: 1.016, speed: 0.970, silenceMs: 44, gamma: 0.99, panX: -0.04, panY: 0.04 },
+  { crop: 98, zoom: 1.024, speed: 0.990, silenceMs: 64, gamma: 1.01, panX: 0.00, panY: 0.04 },
+  { crop: 97, zoom: 1.032, speed: 1.010, silenceMs: 84, gamma: 1.03, panX: 0.04, panY: 0.04 },
+  { crop: 96, zoom: 1.040, speed: 1.030, silenceMs: 104, gamma: 1.05, panX: 0.08, panY: 0.04 },
+  { crop: 95, zoom: 1.048, speed: 1.050, silenceMs: 124, gamma: 1.06, panX: 0.08, panY: 0.08 },
+  { crop: 100, zoom: 1.010, speed: 0.960, silenceMs: 28, gamma: 0.98, panX: -0.08, panY: 0.08 },
+  { crop: 99, zoom: 1.018, speed: 0.980, silenceMs: 48, gamma: 1.00, panX: -0.04, panY: 0.08 },
+  { crop: 98, zoom: 1.026, speed: 1.000, silenceMs: 68, gamma: 1.02, panX: 0.00, panY: 0.08 },
+  { crop: 97, zoom: 1.034, speed: 1.020, silenceMs: 88, gamma: 1.04, panX: 0.04, panY: 0.08 },
+  { crop: 96, zoom: 1.042, speed: 1.040, silenceMs: 108, gamma: 1.06, panX: 0.08, panY: 0.08 },
+  { crop: 95, zoom: 1.050, speed: 1.060, silenceMs: 128, gamma: 1.05, panX: 0.04, panY: 0.08 },
+]);
 export class VariantTransformer {
   static resolveFrameSize(frameSize, maxSide = 1280) {
     const rawWidth = Number(frameSize?.width);
