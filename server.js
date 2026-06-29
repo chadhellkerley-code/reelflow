@@ -184,6 +184,9 @@ app.get('/index.html', (_req, res) => sendFile(res, 'index.html'));
 app.get('/privacidad.html', (_req, res) => sendFile(res, 'privacidad.html'));
 app.get('/terminos.html', (_req, res) => sendFile(res, 'terminos.html'));
 app.get('/eliminacion-datos.html', (_req, res) => sendFile(res, 'eliminacion-datos.html'));
+app.get('/favicon.ico', (_req, res) => {
+  return res.status(204).end();
+});
 app.get(['/auth/instagram/callback', '/auth/instagram/callback/'], (_req, res) => {
   return sendFile(res, path.join('auth', 'instagram', 'callback', 'index.html'));
 });
