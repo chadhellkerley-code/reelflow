@@ -49,6 +49,7 @@ const state = {
   selectedAccounts: new Set(),
   pubType: 'reel',
   scheduleType: 'now',
+  backendMaxVariants: 100,
   ffmpeg: {
     instance: null,
     fetchFile: null,
@@ -2713,6 +2714,30 @@ function getVariantUniqueRuntimeStatusEl() {
 
 function getVariantWorkerUrl() {
   return String(window.VARIANT_WORKER_URL || state.settings.variantWorkerUrl || '').trim().replace(/\/+$/, '');
+}
+
+function syncVariantUniqueLimit(maxVariants) {
+  const parsed = Number.parseInt(maxVariants, 10);
+  const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 100;
+  state.backendMaxVariants = limit;
+
+  const input = document.getElementById('variant-unique-count');
+  const label = document.getElementById('variant-unique-count-label');
+  const display = document.getElementById('variant-unique-count-display');
+
+  if (input) {
+    input.max = String(limit);
+    const currentValue = Number.parseInt(input.value || '10', 10);
+    const nextValue = Number.isFinite(currentValue)
+      ? Math.min(Math.max(currentValue, 1), limit)
+      : Math.min(10, limit);
+    input.value = String(nextValue);
+    if (display) display.textContent = String(nextValue);
+  }
+
+  if (label) {
+    label.textContent = `¿Cuántas variantes? (1-${limit})`;
+  }
 }
 
 function updateVariantUniqueControls() {
@@ -5382,10 +5407,13 @@ async function checkBackend() {
   try {
     const res = await fetch(buildBackendApiUrl('/health'), { signal: AbortSignal.timeout(3000) });
     if (res.ok) {
+      const payload = await res.json().catch(() => null);
+      syncVariantUniqueLimit(payload?.maxVariants || state.backendMaxVariants);
       el.className = 'badge badge-active';
       el.textContent = 'Conectado';
     } else throw new Error();
   } catch {
+    syncVariantUniqueLimit(state.backendMaxVariants);
     el.className = 'badge badge-error';
     el.textContent = 'Sin conexión';
   }
@@ -5446,6 +5474,7 @@ function setupInstagramOAuthFields() {
 function init() {
   syncGeminiGlobals();
   setupInstagramOAuthFields();
+  syncVariantUniqueLimit(state.backendMaxVariants);
 
   state.accounts = state.accounts.filter(account => account.platform === 'ig');
   state.history = state.history.filter(item => item?.platform !== 'ai');
@@ -5468,6 +5497,51 @@ async function fetchVariantWorkerJson(url, options = {}) {
     throw new Error(payload?.error || payload?.message || `Worker request failed (${response.status})`);
   }
   return payload;
+}
+
+async function consumeNdjsonResponse(response, onEvent) {
+  if (!response.body?.getReader) {
+    throw new Error('El worker no devolvió un stream compatible.');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (value) {
+      buffer += decoder.decode(value, { stream: !done });
+      let newlineIndex = buffer.indexOf('\n');
+      while (newlineIndex >= 0) {
+        const rawLine = buffer.slice(0, newlineIndex).trim();
+        buffer = buffer.slice(newlineIndex + 1);
+        newlineIndex = buffer.indexOf('\n');
+        if (!rawLine) continue;
+
+        let event;
+        try {
+          event = JSON.parse(rawLine);
+        } catch {
+          continue;
+        }
+
+        onEvent?.(event);
+      }
+    }
+
+    if (done) break;
+  }
+
+  const finalLine = buffer.trim();
+  if (finalLine) {
+    try {
+      const event = JSON.parse(finalLine);
+      onEvent?.(event);
+    } catch {
+      // Ignore trailing garbage so the stream can still finish cleanly.
+    }
+  }
 }
 
 async function pollVariantUniqueJob(workerUrl, jobId, onUpdate) {
@@ -5500,8 +5574,9 @@ async function startVariantUniqueGeneration() {
   }
 
   const variantCount = parseInt(document.getElementById('variant-unique-count')?.value || '10', 10);
-  if (!Number.isFinite(variantCount) || variantCount < 1 || variantCount > 100) {
-    toast('Las variantes deben ser entre 1 y 100', 'error');
+  const maxVariants = Number.isFinite(Number(state.backendMaxVariants)) ? Number(state.backendMaxVariants) : 100;
+  if (!Number.isFinite(variantCount) || variantCount < 1 || variantCount > maxVariants) {
+    toast(`Las variantes deben ser entre 1 y ${maxVariants}`, 'error');
     return;
   }
 
@@ -5557,13 +5632,57 @@ async function startVariantUniqueGeneration() {
       throw new Error(payload?.error || payload?.message || `No se pudo generar el ZIP (${response.status})`);
     }
 
+    const contentType = response.headers.get('content-type') || '';
+    let jobId = null;
+
+    if (contentType.includes('application/x-ndjson')) {
+      await consumeNdjsonResponse(response, event => {
+        if (!event) return;
+
+        if (event.job?.jobId) {
+          jobId = event.job.jobId;
+        }
+
+        if (event.job?.message) {
+          if (progressText) progressText.textContent = event.job.message;
+          if (runtimeStatus) runtimeStatus.textContent = event.job.message;
+        }
+
+        if (Number.isFinite(Number(event.job?.progress)) && progressBar) {
+          const pct = Math.max(0, Math.min(100, Number(event.job.progress)));
+          progressBar.style.width = `${pct}%`;
+        }
+
+        if (event.type === 'done') {
+          if (event.job?.jobId) {
+            jobId = event.job.jobId;
+          }
+          if (progressText) progressText.textContent = 'Generación terminada. Descargando ZIP...';
+          if (runtimeStatus) runtimeStatus.textContent = 'Generación terminada. Descargando ZIP...';
+          if (progressBar) progressBar.style.width = '100%';
+        }
+
+        if (event.type === 'error') {
+          throw new Error(event.error || event.job?.error || 'Error en el worker remoto.');
+        }
+      });
+    } else {
+      const payload = await response.json().catch(() => null);
+      jobId = payload?.jobId || payload?.job?.jobId || null;
+      if (payload?.error) {
+        throw new Error(payload.error);
+      }
+    }
+
+    if (!jobId) {
+      throw new Error('El worker no devolvió un identificador de job.');
+    }
+
     if (runtimeStatus) runtimeStatus.textContent = 'Descargando ZIP generado en Cloud Run...';
     if (progressText) progressText.textContent = 'Descargando ZIP...';
     if (progressBar) progressBar.style.width = '95%';
 
-    const zipBlob = new Blob([await response.arrayBuffer()], {
-      type: response.headers.get('content-type') || 'application/zip',
-    });
+    const zipBlob = await downloadVariantUniqueZip(workerUrl, jobId);
 
     if (progressText) progressText.textContent = 'Descargando ZIP...';
     if (runtimeStatus) runtimeStatus.textContent = 'Finalizando descarga...';

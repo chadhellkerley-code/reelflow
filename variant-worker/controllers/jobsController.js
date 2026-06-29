@@ -67,6 +67,40 @@ async function downloadSourceFile(sourceUrl, destinationPath) {
   );
 }
 
+function writeEvent(res, event) {
+  res.write(`${JSON.stringify(event)}\n`);
+}
+
+function isFinalJobState(job) {
+  return job?.status === 'completed' || job?.status === 'failed';
+}
+
+function snapshotJob(job) {
+  return getJobResponse(job);
+}
+
+async function waitForJobState(jobStore, jobId, previousSignature) {
+  const job = jobStore.getJob(jobId);
+  if (!job) {
+    return { job: null, signature: previousSignature };
+  }
+
+  const snapshot = snapshotJob(job);
+  const signature = JSON.stringify([
+    snapshot?.status,
+    snapshot?.progress,
+    snapshot?.message,
+    snapshot?.error || '',
+    snapshot?.result?.zipUrl || '',
+  ]);
+
+  if (signature !== previousSignature) {
+    return { job: snapshot, signature };
+  }
+
+  return { job: null, signature: previousSignature };
+}
+
 export function createJobsController({ tmpDir, jobStore, scheduler, maxVariants }) {
   return {
     async postVariantUniqueJob(req, res) {
@@ -93,46 +127,76 @@ export function createJobsController({ tmpDir, jobStore, scheduler, maxVariants 
         }
       }
 
-      if (!req.file) {
-        await fs.mkdir(path.dirname(sourcePath), { recursive: true });
-        await downloadSourceFile(sourceUrl, sourcePath);
-      }
-
-      const job = jobStore.createJob({
-        id: req.jobId,
-        sourcePath,
-        sourceName,
-        tmpDir: jobDir,
-        variantCount,
-        config,
-      });
-
+      let job;
       try {
-        await scheduler.enqueue(() => processVariantUniqueJob(jobStore, job.id));
+        if (!req.file) {
+          await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+          await downloadSourceFile(sourceUrl, sourcePath);
+        }
+
+        job = jobStore.createJob({
+          id: req.jobId,
+          sourcePath,
+          sourceName,
+          tmpDir: jobDir,
+          variantCount,
+          config,
+        });
       } catch (error) {
         return res.status(500).json({
-          error: error?.message || 'The worker could not complete the task.',
-          jobId: job.id,
+          error: error?.message || 'The worker could not prepare the job.',
         });
       }
 
-      if (!job.result?.zipPath) {
-        return res.status(500).json({
-          error: 'The worker did not generate a ZIP archive.',
-          jobId: job.id,
+      res.status(200);
+      res.setHeader('content-type', 'application/x-ndjson; charset=utf-8');
+      res.setHeader('cache-control', 'no-cache, no-transform');
+      res.setHeader('x-accel-buffering', 'no');
+      res.flushHeaders?.();
+      writeEvent(res, { type: 'started', job: snapshotJob(job) });
+
+      const jobTask = scheduler.enqueue(() => processVariantUniqueJob(jobStore, job.id))
+        .catch(error => {
+          jobStore.setError(job.id, error);
+          return null;
         });
-      }
 
-      res.setHeader('X-Job-Id', job.id);
-      res.setHeader('X-Job-Status', job.status);
-      res.setHeader('X-Job-Progress', String(job.progress));
+      let lastSignature = '';
 
-      return res.download(job.result.zipPath, `variantes-unicas-${job.id}.zip`, async downloadError => {
-        if (downloadError) {
-          return;
+      while (true) {
+        const { job: nextSnapshot, signature } = await waitForJobState(jobStore, job.id, lastSignature);
+        lastSignature = signature;
+        if (nextSnapshot) {
+          writeEvent(res, { type: 'progress', job: nextSnapshot });
         }
-        await cleanupJobTmpDir(job);
+
+        const currentJob = jobStore.getJob(job.id);
+        if (isFinalJobState(currentJob)) {
+          break;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      await jobTask.catch(() => {});
+
+      const finalJob = jobStore.getJob(job.id);
+      if (!finalJob || finalJob.status !== 'completed' || !finalJob.result?.zipPath) {
+        writeEvent(res, {
+          type: 'error',
+          job: snapshotJob(finalJob),
+          error: finalJob?.error || 'The worker did not generate a ZIP archive.',
+        });
+        return res.end();
+      }
+
+      writeEvent(res, {
+        type: 'done',
+        job: snapshotJob(finalJob),
+        downloadUrl: `/jobs/${finalJob.id}/download`,
       });
+
+      return res.end();
     },
 
     getJob(req, res) {
