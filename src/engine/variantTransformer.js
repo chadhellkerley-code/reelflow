@@ -24,30 +24,39 @@ export class VariantTransformer {
 
   /**
    * Genera parámetros reproducibles para una variante.
+   * El índice define un preset fijo: 6 familias base x 5 niveles.
    * @param {number} index
    * @param {number} [attempt=0]
    * @returns {{crop:number, zoom:number, speed:number, silenceMs:number, gamma:number}}
    */
   static generateRandomTransforms(index, attempt = 0) {
-    const seed = (Number(index) || 0) * 7919 + (Number(attempt) || 0) * 104729;
+    const variantNumber = Math.max(1, Math.floor(Number(index) || 1));
+    const normalized = ((variantNumber - 1) % 30) + 1;
+    const familyIndex = (normalized - 1) % 6;
+    const tierIndex = Math.floor((normalized - 1) / 6);
+    const attemptIndex = Math.max(0, Math.floor(Number(attempt) || 0));
+
+    const basePresets = [
+      { crop: 100, zoom: 1.000, speed: 0.985, silenceMs: 82, gamma: 0.98 },
+      { crop: 99, zoom: 1.001, speed: 0.991, silenceMs: 90, gamma: 0.99 },
+      { crop: 100, zoom: 1.002, speed: 0.997, silenceMs: 98, gamma: 1.00 },
+      { crop: 99, zoom: 1.003, speed: 1.003, silenceMs: 106, gamma: 0.99 },
+      { crop: 100, zoom: 1.001, speed: 1.009, silenceMs: 114, gamma: 0.98 },
+      { crop: 99, zoom: 1.002, speed: 1.015, silenceMs: 122, gamma: 1.00 },
+    ];
+
+    const preset = basePresets[familyIndex];
 
     return {
-      crop: Math.floor(this._seededRandom(seed, 97, 101)),
-      zoom: this._toFixed(1 + this._seededRandom(seed + 1, 0, 0.02), 3),
-      speed: this._toFixed(1 + this._seededRandom(seed + 2, 0, 0.03), 3),
-      silenceMs: Math.floor(this._seededRandom(seed + 3, 80, 151)),
-      gamma: this._toFixed(0.98 + this._seededRandom(seed + 4, 0, 0.02), 2),
+      crop: Math.max(97, Math.min(100, preset.crop - (tierIndex % 2))),
+      zoom: this._toFixed(preset.zoom + (tierIndex * 0.0002) + (attemptIndex * 0.0001), 3),
+      speed: this._toFixed(preset.speed + (tierIndex * 0.001) + (attemptIndex * 0.001), 3),
+      silenceMs: preset.silenceMs + (tierIndex * 6) + (attemptIndex * 3),
+      gamma: this._toFixed(
+        Math.max(0.98, Math.min(1, preset.gamma - (tierIndex * 0.002) + ((attemptIndex % 2) * 0.001))),
+        2,
+      ),
     };
-  }
-
-  /**
-   * Random seeded: valor reproducible entre min y max.
-   * @private
-   */
-  static _seededRandom(seed, min, max) {
-    const x = Math.sin(seed) * 10000;
-    const rand = x - Math.floor(x);
-    return min + rand * (max - min);
   }
 
   /**
