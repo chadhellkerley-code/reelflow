@@ -107,12 +107,14 @@ export class VariantTransformer {
     const panYOffset = targetHeight > 0 ? Math.round(panYRatio * targetHeight) : 0;
     const panXOffsetExpr = panXOffset >= 0 ? `+${panXOffset}` : `${panXOffset}`;
     const panYOffsetExpr = panYOffset >= 0 ? `+${panYOffset}` : `${panYOffset}`;
+    const xExpr = `max(0\\,min(in_w-${targetWidth}\\,(in_w-${targetWidth})/2${panXOffsetExpr}))`;
+    const yExpr = `max(0\\,min(in_h-${targetHeight}\\,(in_h-${targetHeight})/2${panYOffsetExpr}))`;
 
     const videoFilters = [
       `crop=w='trunc(iw*${cropRatio} / 2) * 2':h='trunc(ih*${cropRatio} / 2) * 2':x='(iw-ow)/2':y='(ih-oh)/2'`,
       `scale=w='trunc(iw*${zoom} / 2) * 2':h='trunc(ih*${zoom} / 2) * 2'`,
       targetWidth && targetHeight
-        ? `crop=${targetWidth}:${targetHeight}:max(0,min(in_w-${targetWidth},(in_w-${targetWidth})/2${panXOffsetExpr})):max(0,min(in_h-${targetHeight},(in_h-${targetHeight})/2${panYOffsetExpr}))`
+        ? `crop=${targetWidth}:${targetHeight}:${xExpr}:${yExpr}`
         : 'crop=iw:ih:0:0',
       `eq=gamma=${gamma}`,
       `setpts=PTS/${speed}`,
