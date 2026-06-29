@@ -49,7 +49,7 @@ const state = {
   selectedAccounts: new Set(),
   pubType: 'reel',
   scheduleType: 'now',
-  backendMaxVariants: 300,
+  backendMaxVariants: 30,
   ffmpeg: {
     instance: null,
     fetchFile: null,
@@ -2718,7 +2718,7 @@ function getVariantWorkerUrl() {
 
 function syncVariantUniqueLimit(maxVariants) {
   const parsed = Number.parseInt(maxVariants, 10);
-  const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 300;
+  const limit = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 30) : 30;
   state.backendMaxVariants = limit;
 
   const input = document.getElementById('variant-unique-count');
@@ -3540,7 +3540,7 @@ function syncEditorProjectMetadata(project) {
 }
 
 function ensureEditorCopyCount(project, targetCount) {
-  const count = Math.max(1, Math.min(500, Number(targetCount) || 1));
+  const count = Math.max(1, Math.min(30, Number(targetCount) || 1));
   const current = project.copies.length;
   const source = project.copies[project.activeCopyIndex] || project.copies[0] || null;
 
@@ -3818,7 +3818,7 @@ function renderEditorProjectModal(projectId) {
         <div class="editor-scroll-note">Escribí el título y presioná Enter para aplicarlo al video. Después lo podés arrastrar en la vista previa.</div>
         <div class="editor-control-row">
           <label for="editor-copy-count">Cantidad de copias</label>
-          <input type="number" id="editor-copy-count" class="form-input editor-input" min="1" max="500" value="${project.copies.length}" onchange="setEditorCopyCount('${project.id}', this.value)" />
+          <input type="number" id="editor-copy-count" class="form-input editor-input" min="1" max="30" value="${project.copies.length}" onchange="setEditorCopyCount('${project.id}', this.value)" />
         </div>
         <div class="editor-copy-tabs">${tabs}</div>
       </div>
@@ -5574,7 +5574,9 @@ async function startVariantUniqueGeneration() {
   }
 
   const variantCount = parseInt(document.getElementById('variant-unique-count')?.value || '10', 10);
-  const maxVariants = Number.isFinite(Number(state.backendMaxVariants)) ? Number(state.backendMaxVariants) : 300;
+  const maxVariants = Number.isFinite(Number(state.backendMaxVariants))
+    ? Math.min(Number(state.backendMaxVariants), 30)
+    : 30;
   if (!Number.isFinite(variantCount) || variantCount < 1 || variantCount > maxVariants) {
     toast(`Las variantes deben ser entre 1 y ${maxVariants}`, 'error');
     return;

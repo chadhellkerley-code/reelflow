@@ -28,7 +28,7 @@ Estas son las variables que usa el despliegue en Google Cloud:
 - `GCS_SIGNED_URL_TTL_MINUTES`: opcional. TTL de las URLs firmadas. Default `60`.
 - `TMP_DIR`: opcional. Directorio temporal para el worker integrado. Default `/tmp/reelflow`.
 - `MAX_PARALLEL_JOBS`: opcional. Límite interno del scheduler del worker. Default `0` para usar la cantidad de CPU disponible.
-- `MAX_VARIANTS`: opcional. Máximo de variantes admitidas por job. Default `300`.
+- `MAX_VARIANTS`: opcional. Máximo de variantes admitidas por job. Default `30`.
 - `FFMPEG_BIN`: opcional. Binario alternativo de `ffmpeg`.
 - `FFPROBE_BIN`: opcional. Binario alternativo de `ffprobe`.
 - `META_GRAPH_API_VERSION`: opcional. Versión del Graph API de Meta usada para publicar en Instagram. Default `v21.0`.
@@ -93,7 +93,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --memory=4Gi \
   --timeout=3600 \
   --concurrency=1 \
-  --set-env-vars "GCS_BUCKET=$BUCKET_NAME,GCS_SIGNED_URL_TTL_MINUTES=60,MAX_PARALLEL_JOBS=1,MAX_VARIANTS=300,INSTAGRAM_APP_SECRET=TU_INSTAGRAM_APP_SECRET"
+  --set-env-vars "GCS_BUCKET=$BUCKET_NAME,GCS_SIGNED_URL_TTL_MINUTES=60,MAX_PARALLEL_JOBS=1,MAX_VARIANTS=30,INSTAGRAM_APP_SECRET=TU_INSTAGRAM_APP_SECRET"
 ```
 
 Si querés fijar tu `INSTAGRAM_APP_ID`, agregalo al `--set-env-vars`.
