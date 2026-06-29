@@ -17,7 +17,7 @@ const ROOT_DIR = __dirname;
 const PORT = Number(process.env.PORT || 8080);
 const TMP_DIR = process.env.TMP_DIR || path.join('/tmp', 'reelflow');
 const MAX_PARALLEL_JOBS = Number(process.env.MAX_PARALLEL_JOBS || 0);
-const MAX_VARIANTS = Number(process.env.MAX_VARIANTS || 100);
+const MAX_VARIANTS = Number(process.env.MAX_VARIANTS || 300);
 const GCS_BUCKET_NAME = String(process.env.GCS_BUCKET || '').trim();
 const GCS_SIGNED_URL_TTL_MINUTES = Number.isFinite(Number(process.env.GCS_SIGNED_URL_TTL_MINUTES))
   ? Number(process.env.GCS_SIGNED_URL_TTL_MINUTES)

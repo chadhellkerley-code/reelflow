@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 8080);
 const TMP_DIR = process.env.TMP_DIR || path.join(__dirname, 'temp');
 const MAX_PARALLEL_JOBS = Number(process.env.MAX_PARALLEL_JOBS || 0);
-const MAX_VARIANTS = Number(process.env.MAX_VARIANTS || 100);
+const MAX_VARIANTS = Number(process.env.MAX_VARIANTS || 300);
 
 await fs.mkdir(TMP_DIR, { recursive: true });
 

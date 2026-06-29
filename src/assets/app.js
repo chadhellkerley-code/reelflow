@@ -49,7 +49,7 @@ const state = {
   selectedAccounts: new Set(),
   pubType: 'reel',
   scheduleType: 'now',
-  backendMaxVariants: 100,
+  backendMaxVariants: 300,
   ffmpeg: {
     instance: null,
     fetchFile: null,
@@ -2718,7 +2718,7 @@ function getVariantWorkerUrl() {
 
 function syncVariantUniqueLimit(maxVariants) {
   const parsed = Number.parseInt(maxVariants, 10);
-  const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 100;
+  const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 300;
   state.backendMaxVariants = limit;
 
   const input = document.getElementById('variant-unique-count');
@@ -5574,7 +5574,7 @@ async function startVariantUniqueGeneration() {
   }
 
   const variantCount = parseInt(document.getElementById('variant-unique-count')?.value || '10', 10);
-  const maxVariants = Number.isFinite(Number(state.backendMaxVariants)) ? Number(state.backendMaxVariants) : 100;
+  const maxVariants = Number.isFinite(Number(state.backendMaxVariants)) ? Number(state.backendMaxVariants) : 300;
   if (!Number.isFinite(variantCount) || variantCount < 1 || variantCount > maxVariants) {
     toast(`Las variantes deben ser entre 1 y ${maxVariants}`, 'error');
     return;

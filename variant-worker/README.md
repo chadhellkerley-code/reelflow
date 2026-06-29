@@ -41,7 +41,7 @@ npm start
 - `PORT`: puerto HTTP del worker. Default `8080`.
 - `TMP_DIR`: directorio temporal para jobs. Default `variant-worker/temp`.
 - `MAX_PARALLEL_JOBS`: cantidad máxima de jobs concurrentes. Default `0` para dejar que el scheduler use su criterio interno.
-- `MAX_VARIANTS`: máximo permitido para `cantidadVariantes`. Default `100`.
+- `MAX_VARIANTS`: máximo permitido para `cantidadVariantes`. Default `300`.
 - `FFMPEG_BIN`: binario a usar para `ffmpeg`. Default `ffmpeg`.
 - `FFMPEG_PATH`: alias opcional para `FFMPEG_BIN`.
 - `FFPROBE_BIN`: binario a usar para `ffprobe`. Default `ffprobe`.
